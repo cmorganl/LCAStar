@@ -9,21 +9,21 @@ try:
     import itertools
     import operator
     from math import log, pow, sqrt
-except:
-    print """ Could not load some user defined  module functions"""
-    print """ Make sure your typed \"source MetaPathwaysrc\""""
-    print """ """
-    print traceback.print_exc(10)
+except ImportError:
+    sys.stderr.write(""" Could not load some user defined  module functions""" + "\n")
+    sys.stderr.write(""" Make sure your typed \"source MetaPathwaysrc\"""" + "\n")
+    sys.stderr.write(""" """ + "\n")
+    sys.stderr.write(traceback.print_exc(10) + "\n")
     sys.exit(3)
 
 try:
-    from math import erf # only available in Python 2.7
-except:
-    print "Warning: Could not import math.erf, will use interpolation for p-values."
+    from math import erf  # only available in Python 2.7
+except ImportError:
+    sys.stderr.write("Warning: Could not import math.erf, will use interpolation for p-values." + "\n")
+
 
 def copyList(a, b): 
     [ b.append(x) for x in a ] 
-
 
 
 # Class to estimate and cumulative distribution functions
@@ -99,7 +99,7 @@ class LCAStar(object):
 
             if not (fields[2]=='1' and fields[1]=='1'):
                 if fields[1]==fields[2]:
-                    print "ERROR what did you just do!. You should  have never  gotten here!"
+                    sys.stderr.write("ERROR what did you just do!. You should  have never  gotten here!" + "\n")
                     sys.exit(0)
 
                 self.ptaxid_to_taxid[fields[2]][fields[1]] = False
@@ -232,14 +232,14 @@ class LCAStar(object):
     # given two names calculates the distance on the tree
     def get_distance(self, taxa1, taxa2, debug=False):
         id1 = self.get_a_Valid_ID([taxa1])
-        id2 = self.get_a_Valid_ID([taxa2]) # real 
+        id2 = self.get_a_Valid_ID([taxa2])  # real
         lin1 = self.get_lineage(id1)
         lin2 = self.get_lineage(id2)
         if debug:
-            print "id1:", id1
-            print "id2:", id2
-            print "lin1:", lin1
-            print "lin2:", lin2
+            sys.stderr.write("id1:", str(id1) + "\n")
+            sys.stderr.write("id2:", str(id2) + "\n")
+            sys.stderr.write("lin1:", str(lin1) + "\n")
+            sys.stderr.write("lin2:", str(lin2) + "\n")
         large = None
         if len(lin1) <= len(lin2):
            large = lin2
@@ -331,7 +331,7 @@ class LCAStar(object):
                  self.update_taxon_support_count(taxonomy)
                  pickorfs[orf['id']] = taxonomy
         except:
-           print "ERROR : Cannot read annotated gff file "
+           sys.stderr.write("ERROR : Cannot read annotated gff file " + "\n")
           
 
     def taxon_depth(self, taxon):
@@ -395,7 +395,6 @@ class LCAStar(object):
            return 'all'
 
         return majority
-        
 
     def __lca_majority(self, taxalist):
         # create the read counts
@@ -417,27 +416,27 @@ class LCAStar(object):
         return None
 
     def __color_tree(self, read_counts):
-        for taxon, value in read_counts.iteritems():
-           id = self.translateNameToID(taxon)
-           tid = id 
-           #climb up the tree from the taxon to the root 
-           #  and mark the parent to child structure with True
-           while( tid in self.taxid_to_ptaxid and tid !='1' ):
-              pid = self.taxid_to_ptaxid[tid][0]
-              self.ptaxid_to_taxid[pid][tid] = True
-              tid = pid
+        for taxon in read_counts:
+            id = self.translateNameToID(taxon)
+            tid = id
+            # climb up the tree from the taxon to the root
+            #  and mark the parent to child structure with True
+            while tid in self.taxid_to_ptaxid and tid != '1':
+                pid = self.taxid_to_ptaxid[tid][0]
+                self.ptaxid_to_taxid[pid][tid] = True
+                tid = pid
 
     def __annotate_tree_counts(self, read_counts):
-        for taxon, value in read_counts.iteritems():
-           id = self.translateNameToID(taxon)
-           if id==None:
-               continue
-           self.id_to_R[id] = value
-
+        for taxon in read_counts:
+            value = read_counts[taxon]
+            id = self.translateNameToID(taxon)
+            if id is None:
+                continue
+            self.id_to_R[id] = value
 
     def __decolor_tree(self):
         S = ['1']
-        while len(S) >0:
+        while len(S) > 0:
             id = S.pop()
 
             C = []
@@ -449,16 +448,16 @@ class LCAStar(object):
                   self.ptaxid_to_taxid[id][child] = False
                   S.append(child)
 
-
     def __create_majority(self, root, read_name_counts):
         read_counts = {}
         Total = 0
-        for  taxon, count in read_name_counts.iteritems():
+        for taxon in read_name_counts:
+            count = read_name_counts[taxon]
             id = self.translateNameToID(taxon)
             read_counts[id] = count
             Total += count
 
-        candidate = ['1', 10000000.00 ]
+        candidate = ['1', 10000000.00]
         Stack = [root]
         while len(Stack) >0:
             id = Stack.pop()
@@ -485,7 +484,7 @@ class LCAStar(object):
                 try:
                     self.id_to_H[id] = -(self.id_to_L[id]/self.id_to_S[id] - log(self.id_to_S[id]))
                 except:
-                    print "ID: " + str(id)
+                    sys.stderr.write("ID: " + str(id) + "\n")
                     exit(-1)
                 if self.id_to_S[id] > Total*self.lca_star_alpha:
                     if candidate[1] > self.id_to_H[id]:
@@ -526,12 +525,12 @@ class LCAStar(object):
         exp_lin = self.get_lineage(exp_id)
         obs_lin = self.get_lineage(obs_id)
         if debug:
-            print "Expected: ", exp
-            print "Observed: ", obs
-            print "Expected ID: ", exp_id
-            print "Observed ID: ", obs_id
-            print "Expected Lineage:", exp_lin
-            print "Observed Lineage :", obs_lin
+            sys.stderr.write("Expected: ", exp + "\n")
+            sys.stderr.write("Observed: ", obs + "\n")
+            sys.stderr.write("Expected ID: ", str(exp_id) + "\n")
+            sys.stderr.write("Observed ID: ", str(obs_id) + "\n")
+            sys.stderr.write("Expected Lineage:", exp_lin + "\n")
+            sys.stderr.write("Observed Lineage :", obs_lin + "\n")
         sign = -1
 
         # check to see if expected in observed lineage
@@ -558,8 +557,8 @@ class LCAStar(object):
                 if j > 0:
                     b_cost += self.step_cost(len(small)-j-1)
                 if large[i] == small[j]:
-                    return ((a_cost + b_cost) * sign)
-        return None # did not find lineages
+                    return (a_cost + b_cost) * sign
+        return None  # did not find lineages
 
     # Function takes an LCAStar candidate and read_counts object and returns a revised
     # taxonomy distribution to calculate a p-value
@@ -574,33 +573,33 @@ class LCAStar(object):
             # create a list of taxa
             for i in range(read_counts[r]):
                 new_taxa_dist_ids.append(r_id)
-        new_data_dist = map(self.translateIdToName, map(str, new_taxa_dist_ids) )
+        new_data_dist = list(map(self.translateIdToName, map(str, new_taxa_dist_ids)))
         return new_data_dist
 
     def lca_star(self, taxalist, return_id=False):
         # filter taxa dist by depth
         taxalist = self.filter_taxa_list(taxalist)
         
-        if taxalist==None:
+        if taxalist is None:
            return ('all', None)
         
         majority = self.__lca_majority(taxalist) 
         
-        if majority != None:
-           p_val = self.calculate_pvalue(taxalist, majority)
-           if return_id:
-               majority = self.translateNameToID(majority)
-           return (majority, str(p_val))
+        if majority is not None:
+            p_val = self.calculate_pvalue(taxalist, majority)
+            if return_id:
+                majority = self.translateNameToID(majority)
+            return (majority, str(p_val))
         
         read_counts, Total = self.__read_counts(taxalist)
         
-        ## Calculate LCA Star
+        # Calculate LCA Star
         self.__annotate_tree_counts(read_counts)
         self.__color_tree(read_counts)
         result_id = self.__create_majority('1', read_counts)
         collapsed_taxa_list = self.__collapse_distribution(result_id, read_counts)
         self.__clear_lca_star_data_structure()
-        result_taxon = self.translateIdToName( str( result_id ) )
+        result_taxon = self.translateIdToName(str(result_id))
         p_val = self.calculate_pvalue(collapsed_taxa_list, result_taxon)
         self.__decolor_tree()
         if return_id:
@@ -614,27 +613,30 @@ class LCAStar(object):
     # Calculate pvalue based on Nettleton result
     def calculate_pvalue(self, taxa_list, taxa):
         if taxa not in taxa_list:
-            print "Error: Tried to calculate a p-value for a taxa not in taxa_list."
+            sys.stderr.write("Error: Tried to calculate a p-value for a taxa not in taxa_list." + "\n")
             return None
-        if len(taxa_list) <= 1:
-            #print "Warning: p-value not defined for taxa lists of <2"
+        if len(list(taxa_list)) <= 1:
+            # print "Warning: p-value not defined for taxa lists of <2"
             return None
 
-        X = {} # hash of taxa counts
+        X = {}  # hash of taxa counts
         M = 0  # maximum count
 
         for t in taxa_list:
-            if not t in X:
+            if t not in X:
                 X[t] = 0
             X[t] += 1
-
-        X_k = X[taxa] # taxa count for test statistic
+        try:
+            X_k = X[taxa]  # taxa count for test statistic
+        except KeyError:
+            sys.stderr.write("Error: unable to properly parse taxa_list into a dictionary." + "\n")
+            sys.exit()
         for t in X:
             if t != taxa:
                 if X[t] > M:
                     M = X[t]
 
-        T = 0 # test statistic
+        T = 0  # test statistic
 
         if X_k <= M:
             # trivial case
@@ -642,10 +644,10 @@ class LCAStar(object):
         else:
             first = 0
             if M > 0:
-                first = M * log( (2 * M) / (M + X_k) )
-            second = X_k * log( (2 * X_k) / (M + X_k) )
+                first = M * log((2 * M) / (M + X_k))
+            second = X_k * log((2 * X_k) / (M + X_k))
             T = 2 * (first + second)
-            return round(1 - self.chi_squared(T),3)
+            return round(1 - self.chi_squared(T), 3)
 
     # Returns the simple majority taxa: calculate the most common taxa in a given list
     def simple_majority(self, L, return_id=False):
@@ -656,6 +658,7 @@ class LCAStar(object):
         # print 'SL:', SL
         groups = itertools.groupby(SL, key=operator.itemgetter(0))
         # auxiliary function to get "quality" for an item
+
         def _auxfun(g):
             item, iterable = g
             count = 0

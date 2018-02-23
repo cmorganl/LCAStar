@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 """
 create_analysis_table.py
 
@@ -24,9 +24,9 @@ try:
      from optparse import OptionParser, OptionGroup
      from LCAStar import *
      #from libs.python_modules.sysutil import getstatusoutput
-except:
-     print """ Could not load some user defined  module functions"""
-     print """ """
+except ImportError:
+     sys.stderr.write(""" Could not load some user defined  module functions""" + "\n")
+     sys.stderr.write(""" """ + "\n")
      sys.exit(3)
 
 
@@ -79,7 +79,7 @@ def read_taxonomy_list(filename, taxadict):
     try:
        namefile = open(filename, 'r')
     except:
-       print "ERROR : Could not open file  " + filename
+       sys.stderr.write("ERROR : Could not open file  " + filename + "\n")
        sys.exit(1)
     
     line = True
@@ -96,17 +96,17 @@ def read_taxonomy_list(filename, taxadict):
     try:
        namefile.close()
     except:
-       print "ERROR : Could not close file  " + filename
+       sys.stderr.write("ERROR : Could not close file  " + filename + "\n")
        sys.exit(1)
 
    
 def check_arguments(opts):
     if opts.ncbi_tree_file == None:
-       print usage
+       sys.stderr.write(usage + "\n")
        sys.exit(-1)
 
     if opts.taxa_list == None:
-       print usage
+       sys.stderr.write(usage + "\n")
        sys.exit(-1)
 
 
@@ -120,33 +120,28 @@ def main(argv):
     
     # Load NCBI Tree and LCA Star object
     lcastar = LCAStar(opts.ncbi_tree_file)
-    print 'Done initializing LCA Star'
+    sys.stderr.write('Done initializing LCA Star' + "\n")
     
     # Set appropreate parameters
     lcastar.setLCAStarParameters(min_depth = opts.min_depth, alpha = opts.alpha, min_reads = opts.min_reads )
 
-    print ["Contig", "LCAStar", "Majority", "LCASquared"]
+    print(["Contig", "LCAStar", "Majority", "LCASquared"])
 
     for contig in taxadict.keys():
        taxon = lcastar.lca_star(taxadict[contig])
-       print 'LCA Star ' + contig + ' ' + taxon
+       print('LCA Star ' + contig + ' ' + taxon)
        taxon = lcastar.lca_majority(taxadict[contig])
-       print 'LCA Majority ' + contig + ' ' + taxon
+       print('LCA Majority ' + contig + ' ' + taxon)
        taxon = lcastar.getTaxonomy([taxadict[contig]] )
-       print 'LCA Square ' + contig + ' ' + taxon
+       print('LCA Square ' + contig + ' ' + taxon)
 
     sys.exit(-1)
-
-
 
 # the main function of metapaths
 if __name__ == "__main__":
     main(sys.argv[1:])
 
-
     sys.exit(-1)
-
-
 
 # the main function of metapaths
 if __name__ == "__main__":

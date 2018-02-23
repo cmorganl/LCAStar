@@ -1,4 +1,4 @@
-#!python
+#!/usr/bin/env python3
 """
 create_analysis_table.py
 
@@ -26,9 +26,9 @@ try:
      from sys import path
      from python_resources.LCAStar import *
      from python_resources.fastareader import *
-except:
-     print """ Could not load some modules """
-     print """ """
+except ImportError:
+     sys.stderr.write(""" Could not load some modules """ + "\n")
+     sys.stderr.write(""" """ + "\n")
      sys.exit(3)
 
 what_i_do = "Creates LCA_Star analysis table from MetaPathways output for downstream analysis."
@@ -130,9 +130,9 @@ def main(argv):
        # print taxaID_to_taxa[ncbiID_to_taxaID[read2origin[contig]]]
     
     # Build the LCA Star NCBI Tree
-    print "Loading LCAStar:"
+    print("Loading LCAStar:")
     lcastar = LCAStar(args["ncbi_tree"])
-    print "Done."
+    print("Done.")
     
     # set LCAStar parameters
     lcastar.setLCAStarParameters(min_depth = 1, alpha = 0.5, min_reads = 1 )

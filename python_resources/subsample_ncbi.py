@@ -25,8 +25,8 @@ try:
      from os import makedirs, sys, remove
      from sys import path
 except:
-     print """ Could not load some modules """
-     print """ """
+     sys.stderr.write(""" Could not load some modules """ + "\n")
+     sys.stderr.write(""" """ + "\n")
      sys.exit(3)
 
 what_i_do = "Randomly select sequences to sample"
@@ -78,7 +78,7 @@ class FastaReader():
          self.file = open(fasta_filename, 'r')
          # print fasta_filename
      except IOError:
-         print "Cannot open fasta file " + fasta_filename
+         sys.stderr.write("Cannot open fasta file " + fasta_filename + "\n")
 
  def __iter__(self):
      return self

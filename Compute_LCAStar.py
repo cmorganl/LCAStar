@@ -1,4 +1,4 @@
-#!python
+#!/usr/bin/env python3
 """
 create_analysis_table.py
 
@@ -16,52 +16,60 @@ __maintainer__ = "Niels W Hanson"
 __status__ = "Release"
 
 try:
-     import os
-     import re
-     import argparse
-     import glob
-     import random
-     import functools
-     import operator
-     from os import makedirs, sys, remove
-     from sys import path
-     from python_resources.LCAStar import *
-     from python_resources.fastareader import *
-except:
-     print """ Could not load some modules """
-     print """ """
-     sys.exit(3)
+    import os
+    import re
+    import argparse
+    import glob
+    import random
+    import functools
+    import operator
+    from os import makedirs, sys, remove
+    from sys import path
+    from python_resources.LCAStar import *
+    from python_resources.fastareader import *
+    from python_resources.entrez_query_utils import *
+except ImportError:
+    sys.stderr.write(""" Could not load some modules """ + "\n")
+    sys.stderr.write(""" """ + "\n")
+    sys.exit(3)
 
 what_i_do = """Computes three estimates of Contig Taxonomy: LCA^2, Majority, and entropy-based LCA* \
 as described in the LCAStar paper (Hanson, et al. 2014).
 """
 parser = argparse.ArgumentParser(description=what_i_do)
 
-parser.add_argument('-i', '--parsed_blast_file', dest='parsed_blast', type=str, nargs='?', required=True,
-    help='MetaPathways Output: Parsed (B)LAST annotation file.', default=None)
+blast_file = parser.add_mutually_exclusive_group()
+
+blast_file.add_argument("--parsed_blast_file", dest='parsed_blast',
+                        type=str, nargs='?', default=None,
+                        help='MetaPathways Output: Parsed (B)LAST annotation file.')
+blast_file.add_argument("--raw_blast_file", dest="raw_blast",
+                        type=str, nargs='?', default=None,
+                        help='(B)LAST tabular alignment file.')
 parser.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=True,
-    help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).', default=None)
+                    help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).', default=None)
 parser.add_argument('--ncbi_tree', dest='ncbi_tree', type=str, nargs='?', required=False,
-    help='MetaPathways: NCBI tree file', default=None)
+                    help='MetaPathways: NCBI tree file', default=None)
 parser.add_argument('--ncbi_megan_map', dest='ncbi_megan_map', type=str, nargs='?', required=False,
-    help='Preferred mapping for NCBI names (map.ncbi)', default=None)
+                    help='Preferred mapping for NCBI names (map.ncbi)', default=None)
 parser.add_argument('-o', '--output', dest='output', type=str, nargs='?', required=False,
-    help='output file of predicted taxonomies', default=None)
+                    help='output file of predicted taxonomies', default=None)
 parser.add_argument('--orf_summary', dest='orf_summary', type=str, nargs='?',
-    choices=['lca', 'besthit', 'orf_majority'], required=False, default='lca',
-    help='ORF Summary method')
+                    choices=['lca', 'besthit', 'orf_majority'], required=False, default='lca',
+                    help='ORF Summary method')
 parser.add_argument('--contig_taxa_ref', dest='contig_taxa_ref', type=str, nargs='?', required=False,
-    default=None, help='List of contig reference taxonomies (i.e., the known taxonomy)')
+                    default=None, help='List of contig reference taxonomies (i.e., the known taxonomy)')
 parser.add_argument('--sample_taxa_ref', dest='sample_taxa_ref', type=str, nargs='?', required=False,
-    default=None, help='Name of the NCBI reference taxonomy. Hint: Put in double quotes')
+                    default=None, help='Name of the NCBI reference taxonomy. Hint: Put in double quotes')
 parser.add_argument('-a', '--all_methods', dest='all_methods', action='store_true', required=False,
-    default=None, help='Print all taxonomic estimation methods.')
-parser.add_argument('-l','--print_lineage', dest='print_lineage', action='store_true', required=False,
-    default=None, help='Print full taxonomic linage instead of just final leaf taxonomy.')
+                    default=None, help='Print all taxonomic estimation methods.')
+parser.add_argument('-l', '--print_lineage', dest='print_lineage', action='store_true', required=False,
+                    default=None, help='Print full taxonomic linage instead of just final leaf taxonomy.')
 parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", required=False,
                     default=None, help="Verbose mode: prints all election counts for each contig.")
 parser.add_argument("--alpha", dest="alpha", type=float, required=False,
                     default=0.51, help="Alpha-majority threshold.")
+
 
 def translate_to_prefered_name(id, ncbi_megan_map, lcastar):
     # This maps an NCBI Taxonomy Database ID to the prefered MEGAN Taxonomy name and
@@ -79,44 +87,51 @@ def translate_to_prefered_name(id, ncbi_megan_map, lcastar):
         else:
             return "Unknown (" + id_str + ")"
 
+
 def print_warning(message, error=False):
     if error:
-        print "Error: " + message
+        sys.stderr.write("Error: " + message + "\n")
     else:
-        print "Warning: " + message
+        sys.stderr.write("Warning: " + message + "\n")
 
 
 def clean_tab_lines(line):
     # Splits lines into fields by tabs, strips whitespace and end-of-line characters from each field.
-    fields = line.split("\t")
-    fields = map(str.strip, fields)
-    fields = map(str.strip, fields, "\n")
+    fields = line.strip().split("\t")
+    # fields = map(str.strip, fields)
+    # fields = map(str.strip, fields, "\n")
     return fields
+
 
 def create_contig2origin(mapping_filename):
     # dictionary/hash table mapping input sequences to their original header, e.g. >[Header]
     contig2origin = {}
     try:
         with open(mapping_filename, "r") as fh:
-           for l in fh:
-               fields = clean_tab_lines(l)
-               read_name = fields[0]
-               original_name = fields[1]
-               contig2origin[read_name] = original_name
+            for l in fh:
+                fields = clean_tab_lines(l)
+                if not fields:
+                    continue
+                else:
+                    read_name = fields[0]
+                    original_name = fields[1]
+                    contig2origin[read_name] = original_name
         return contig2origin
     except:
-        print_warning("Could not open file.")
+        print_warning("Could not open file " + mapping_filename + ".\n")
 
-## global regular expression patterns
-contig_pattern = re.compile("^(.*)_([0-9]*)$") # pulls out contig name from ORF annotations
-taxonomy_pattern = re.compile("\[(.*)\]") # pulls out taxonomy between square brackets in taxonomic annotations
+# global regular expression patterns
+contig_pattern = re.compile("^(.*)_([0-9]*)$")  # pulls out contig name from ORF annotations
+taxonomy_pattern = re.compile("\[(.*)\]")  # pulls out taxonomy between square brackets in taxonomic annotations
+
 
 def printline(line, output_fh=None):
-    # print or write line depending on presence of output_fh
+    # sys.stderr.write(or write line depending on presence of output_fh
     if output_fh:
         output_fh.write(line + "\n")
     else:
-        print line
+        sys.stderr.write(line + "\n")
+
 
 def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_megan_map):
     output_fh = None
@@ -333,13 +348,90 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
             if output_fh:
                 output_fh.write(line + "\n")
             else:
-                print line
+                sys.stderr.write(line + "\n")
     if output_fh:
         output_fh.close()
-    
+
+
+def read_blast_table(args):
+    # contig_taxa_data structure
+    contig_to_taxa = {}
+    processed = ""
+    if args["parsed_blast"]:
+        sys.stdout.write("Parsing (B)LAST tabular output file... ")
+        sys.stdout.flush()
+        blast_table = args["parsed_blast"]
+        processed = True
+    else:
+        sys.stdout.write("Downloading taxonomic information for each accession aligned to... ")
+        sys.stdout.flush()
+        blast_table = args["raw_blast"]
+        memoize_map = dict()
+        processed = False
+    try:
+        blast_alignments = open(blast_table, "r")
+    except IOError:
+        sys.stderr.write("ERROR: " + blast_table + " could not be opened\n")
+        sys.exit(7)
+
+    for l in blast_alignments:
+        if re.match("^\#", l):
+            clean_tab_lines(l)
+        else:
+            fields = clean_tab_lines(l)
+            contig_hits = contig_pattern.search(fields[0])
+            if contig_hits:
+                contig = contig_hits.group(1)
+                orf = contig_hits.group(2)
+                # add to data structure if it doesn't exist
+                if contig not in contig_to_taxa:
+                    contig_to_taxa[contig] = {}
+                if orf not in contig_to_taxa[contig]:
+                    contig_to_taxa[contig][orf] = []
+                # pull taxonomy out of annotation
+                # Check to ensure the BLAST table contains taxonomic information
+                if processed:
+                    taxa_hits = taxonomy_pattern.search(fields[9])
+                    if taxa_hits:
+                        taxa = taxa_hits.group(1)
+                        bitscore = fields[3]
+                        contig_to_taxa[contig][orf].append( (taxa, float(str(bitscore))) )
+                    else:
+                        continue
+                else:
+                    if fields[1] in memoize_map:
+                        taxa = memoize_map[fields[1]]
+                    else:
+                        taxa = get_lineage(fields[1], "prot").split("; ")[-1]
+                        memoize_map[fields[1]] = taxa
+                    bitscore = fields[-1]
+                    if taxa and bitscore:
+                        contig_to_taxa[contig][orf].append((taxa, float(str(bitscore))))
+                    else:
+                        sys.stderr.write("WARNING: Unable to find the taxonomy and bitscore information from " +
+                                         blast_table + "\n")
+            else:
+                continue
+
+    sys.stdout.write("done.\n")
+
+    num_alignments_with_taxa = 0
+    for contig in contig_to_taxa:
+        for orf in contig_to_taxa[contig]:
+            num_alignments_with_taxa += len(contig_to_taxa[contig][orf])
+    if num_alignments_with_taxa == 0:
+        sys.stderr.write("ERROR: Unable to parse contig and taxonomic data from BLAST table provided.\n")
+        sys.exit(7)
+    else:
+        return contig_to_taxa
+
+
 def main(argv):
     # parse arguments
     args = vars(parser.parse_args())
+    if not args["parsed_blast"] and not args["raw_blast"]:
+        sys.stderr.write("ERROR: Either a MetaPathways-processed (B)LAST file or a raw BLAST file are required!\n")
+        sys.exit(3)
 
     ## read input mapping file (.mapping.txt) to create read2origin map
     contig2origin = {} # dictionary/hash table mapping input sequences to their original header, e.g. >[Header]
@@ -349,39 +441,11 @@ def main(argv):
     ncbi_megan_map = {} # hash map from given taxonomy to preferred one used by megan
     with open(args["ncbi_megan_map"], 'r') as meganfile:
         for line in meganfile:
-             fields = line.split("\t")
-             fields = map(str.strip, fields)
+             fields = line.strip().split("\t")
              ncbi_megan_map[fields[0]] = fields[1]
 
-    # contig_taxa_data structure
-    contig_to_taxa = {}
-
     # Read blast table
-    with open(args["parsed_blast"], "r") as fh:
-        for l in fh:
-            if re.match("^\#", l):
-                clean_tab_lines(l)
-            else:
-                fields = clean_tab_lines(l)
-                contig_hits = contig_pattern.search(fields[0])
-                if contig_hits:
-                    contig = contig_hits.group(1)
-                    orf = contig_hits.group(2)
-                    # add to data structre if it doesn't exist
-                    if contig not in contig_to_taxa:
-                        contig_to_taxa[contig] = {}
-                    if orf not in contig_to_taxa[contig]:
-                        contig_to_taxa[contig][orf] = []
-                    # pull taxonomy out of annotation
-                    taxa_hits = taxonomy_pattern.search(fields[9])
-                    if taxa_hits:
-                        taxa = taxa_hits.group(1)
-                        bitscore = fields[3]
-                        contig_to_taxa[contig][orf].append( (taxa, float(str(bitscore))) )
-                    else:
-                        continue
-                else:
-                    continue
+    contig_to_taxa = read_blast_table(args)
 
     ## Load contig references (if available or applicable)
 
@@ -404,7 +468,7 @@ def main(argv):
 
     ## Build the LCA Star NCBI Tree
     lcastar = LCAStar(args["ncbi_tree"])
-    lcastar.setLCAStarParameters(min_depth = 1, alpha = args["alpha"], min_reads = 1)
+    lcastar.setLCAStarParameters(min_depth=1, alpha=args["alpha"], min_reads=1)
 
     ## Calculate LCA for each ORF
     contig_to_lca = {}
@@ -426,7 +490,7 @@ def main(argv):
                     majority_list = []
                     for t in contig_taxas:
                         majority_list.append(t[0])
-                    #TODO Update to check for alterantive taxonomy names
+                    #TODO Update to check for alternative taxonomy names
                     contig_to_lca[contig][orf] = lcastar.simple_majority(majority_list)
                 else:
                     lca_list = [] # create a list of lists for LCA calculation

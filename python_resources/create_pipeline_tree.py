@@ -1,4 +1,4 @@
-#!python
+#!/usr/bin/env python3
 """
 create_pipeline_tree.py
 
@@ -23,22 +23,22 @@ try:
      import random
      from os import makedirs, sys, remove
      from sys import path
-except:
-     print """ Could not load some modules """
-     print """ """
+except ImportError:
+     sys.stderr.write(""" Could not load some modules """ + "\n")
+     sys.stderr.write(""" """ + "\n")
      sys.exit(3)
 
 what_i_do = "Creates an NCBI Tree Compatible with MetaPathways."
 parser = argparse.ArgumentParser(description=what_i_do)
 
 parser.add_argument('--ncbi_names', dest='ncbi_names', type=str, nargs='?',
-          required=True, help='NCBI Taxonomy tree names.dmp file', default=None)
+                    required=True, help='NCBI Taxonomy tree names.dmp file', default=None)
 parser.add_argument('--ncbi_nodes', dest='ncbi_nodes', type=str, nargs='?',
-          required=True, help='NCBI Taxonomy tree nodes.dmp file', default=None)                
+                    required=True, help='NCBI Taxonomy tree nodes.dmp file', default=None)
 parser.add_argument('-o', dest='output_file', type=str, nargs='?',
-          required=True, help='name out output tree file', default=None)
-parser.add_argument('--modifications', dest='modifications', type=str, 
-          required=False, help='key-value file for linesapply modifications for MDM, prokaryotes, etc.', default=None)
+                    required=True, help='name out output tree file', default=None)
+parser.add_argument('--modifications', dest='modifications', type=str, default=None,
+                    required=False, help='key-value file for linesapply modifications for MDM, prokaryotes, etc.')
 
 
 def main(argv):
@@ -69,7 +69,7 @@ def main(argv):
            while names[child_id]:
                output.write("\t".join([names[child_id].pop(), child_id, parent_id]) + "\n")
        else:
-           print "Error: missing child"
+           sys.stderr.write("Error: missing child" + "\n")
        l = fh.readline()
    fh.close()
    output.close()

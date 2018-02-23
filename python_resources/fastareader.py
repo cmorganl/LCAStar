@@ -1,5 +1,6 @@
 
 import re
+import sys
 
 # Functional classes
 """
@@ -34,7 +35,7 @@ class FastaReader():
             self.file = open(fasta_filename, 'r')
             # print fasta_filename
         except IOError:
-            print "Cannot open fasta file " + fasta_filename
+            sys.stderr.write("Cannot open fasta file " + fasta_filename + "\n")
 
     def __iter__(self):
         return self

@@ -9,6 +9,7 @@ try:
     import sys
     import itertools
     import operator
+    import logging
     from math import log, pow, sqrt
 except ImportError:
     sys.stderr.write(""" Could not load some user defined  module functions""" + "\n")
@@ -49,24 +50,24 @@ class LCAStar(object):
         self.begin_pattern = re.compile("#")
         
         # Stanard NCBI Tree parameters
-        self.name_to_id = {} # a readable taxon name to ncbi id
-        self.id_to_name = {} # a readable taxon ncbi taxid to name
-        self.taxid_to_ptaxid = {} # this is the tree structure in a id to parent map, you can traverse it to go to the root
+        self.name_to_id = {}  # a readable taxon name to ncbi id
+        self.id_to_name = {}  # a readable taxon ncbi taxid to name
+        self.taxid_to_ptaxid = {}  # this is the tree structure in a id to parent map, you can traverse it to the root
         # this is the tree structure in a parent to child id map, you can use it to traverse the tree downwards
         # ptaxid_to_taxid[ptaxid] = [ cid1, cid2, ...cidk]
         self.ptaxid_to_taxid = {}
         # a map from id to value, which has the S = sum n,  value for each id
-        self.id_to_R={}
+        self.id_to_R = {}
         # a map from id to value, which has the S = sum n,  value for each id
-        self.id_to_S={}
+        self.id_to_S = {}
         # a map from id to value, which has the L = sum n log n,  value for each id
-        self.id_to_L={}
+        self.id_to_L = {}
         # a map from id to value, which has the entropy H value for each id
-        self.id_to_H={}
+        self.id_to_H = {}
         # a map to keep track of visited nodes
-        self.id_to_V={}
+        self.id_to_V = {}
         self.lca_min_score = 50   # an LCA parameter for min score for a hit to be considered
-        self.lca_top_percent = 10    # an LCA param to confine the hits to within the top hits score upto the top_percent%
+        self.lca_top_percent = 10  # an LCA param to confine the hits to within the top hits score upto the top_percent%
         self.lca_min_support = 5   # a minimum number of reads in the sample to consider a taxon to be present
         self.results_dictionary = None
         
@@ -76,22 +77,16 @@ class LCAStar(object):
         self.lca_star_alpha = 0.51
         self.chi_squared_cdf = None
 
+        logging.info("Reading " + filename + "... ")
         taxonomy_file = open(filename, 'r')
-        lines = taxonomy_file.readlines()
-        taxonomy_file.close()
 
-        for line in lines:
+        for line in taxonomy_file:
             if self.begin_pattern.search(line):
                 continue
             fields = [str(x.strip()) for x in line.rstrip().split('\t')]
             if len(fields) != 3:
                 continue
 
-            # if fields[0] in self.name_to_id:
-            #     if fields[1] != self.name_to_id[fields[0]]:
-            #         print("'" + fields[0] + "'", " overwritten as", fields[1])
-            # else:
-            #     self.name_to_id[fields[0]] = fields[1]
             self.name_to_id[fields[0]] = fields[1]
             if fields[1] not in self.id_to_name:
                 self.id_to_name[fields[1]] = fields[0]
@@ -102,25 +97,27 @@ class LCAStar(object):
             self.taxid_to_ptaxid[fields[1]] = [fields[2], 0, 0]
 
             if not fields[2] in self.ptaxid_to_taxid:
-                self.ptaxid_to_taxid[fields[2]]={}
+                self.ptaxid_to_taxid[fields[2]] = {}
 
-            if not (fields[2]=='1' and fields[1]=='1'):
-                if fields[1]==fields[2]:
-                    sys.stderr.write("ERROR what did you just do!. You should  have never  gotten here!" + "\n")
+            if not (fields[2] == '1' and fields[1] == '1'):
+                if fields[1] == fields[2]:
+                    logging.error("What did you just do!. You should have never gotten here!" + "\n")
                     sys.exit(0)
 
                 self.ptaxid_to_taxid[fields[2]][fields[1]] = False
+        taxonomy_file.close()
+        logging.info("done.\n")
 
     def setParameters(self, min_score, top_percent, min_support):
-       self.lca_min_score = min_score
-       self.lca_top_percent = top_percent
-       self.lca_min_support = min_support
+        self.lca_min_score = min_score
+        self.lca_top_percent = top_percent
+        self.lca_min_support = min_support
          
     def sizeTaxnames(self):
-         return len(self.name_to_id)
+        return len(self.name_to_id)
 
     def sizeTaxids(self):
-         return len(self.taxid_to_ptaxid)
+        return len(self.taxid_to_ptaxid)
           
     def get_a_Valid_ID(self, name_group):
         for name in name_group:
@@ -131,52 +128,56 @@ class LCAStar(object):
 
     # given a taxon name it returns the corresponding unique ncbi tax id
     def translateNameToID(self, name):
-       if not name in self.name_to_id:
-           return None
-       return self.name_to_id[name]
+        if name not in self.name_to_id:
+            return None
+        return self.name_to_id[name]
 
     # given a taxon id to taxon name map
     def translateIdToName(self, id):
-       if not id in self.id_to_name:
-           return None
-       return self.id_to_name[id]
+        if id not in self.id_to_name:
+            return None
+        return self.id_to_name[id]
 
     # given a name it returns the parents name
     def getParentName(self, name):
-       if not name in  self.name_to_id:  
-          return None
-       id = self.name_to_id[name]  
-       pid = self.getParentTaxId(id)
-       return self.translateIdToName( pid )
+        if name not in self.name_to_id:
+            return None
+        id = self.name_to_id[name]
+        pid = self.getParentTaxId(id)
+        return self.translateIdToName(pid)
 
     # given a ncbi tax id returns the parents tax id
     def getParentTaxId(self, ID):
-       if not ID in self.taxid_to_ptaxid:
-          return None
-       return self.taxid_to_ptaxid[ID][0]
+        if ID not in self.taxid_to_ptaxid:
+            return None
+        return self.taxid_to_ptaxid[ID][0]
 
-    #   given a set of ids it returns the lowest common ancenstor 
-    #   without caring about min support
-    #   here LCA for a set of ids are computed as follows
-    #   first we consider one ID at a time
-    #   for each id we traverse up the ncbi tree using the id to parent id map
-    #   at the same time increasing the count on the second value of the 3-tuple 
-    #   note that at the node where all the of the individual ids ( limit in number)
-    #   converges the counter matches the limit for the first time, while climbing up. 
-    #   This also this enables us to make the selection of id arbitrary 
     def get_lca(self, IDs, return_id=False):
+        """
+        Given a set of ids it returns the lowest common ancestor, without caring about min support.
+        Here LCA for a set of ids are computed as follows: 
+        first we consider one ID at a time for each id we traverse up the NCBI tree using the id to parent id map
+        at the same time increasing the count on the second value of the 3-tuple 
+        note that at the node where all the of the individual ids ( limit in number) 
+        converges the counter matches the limit for the first time, while climbing up. 
+        This also this enables us to make the selection of id arbitrary 
+    
+        :param IDs: 
+        :param return_id: 
+        :return: 
+        """
         limit = len(IDs)
-        for id in IDs:
-           tid = id 
-           while( tid in self.taxid_to_ptaxid and tid !='1' ):
-               self.taxid_to_ptaxid[tid][1]+=1
-               if self.taxid_to_ptaxid[tid][1]==limit:
-                  if return_id:
-                      return tid
-                  else:
-                      return  self.id_to_name[tid]  
-               tid = self.taxid_to_ptaxid[tid][0]
-        
+        for taxid in IDs:
+            tmp_id = taxid
+            while tmp_id in self.taxid_to_ptaxid and tmp_id != '1':
+                self.taxid_to_ptaxid[tmp_id][1] += 1
+                if self.taxid_to_ptaxid[tmp_id][1] == limit:
+                    if return_id:
+                        return tmp_id
+                    else:
+                        return self.id_to_name[tmp_id]  
+                tmp_id = self.taxid_to_ptaxid[tmp_id][0]
+
         if return_id:
             return '1'
         else:

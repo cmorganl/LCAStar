@@ -47,14 +47,14 @@ blast_file.add_argument("--parsed_blast_file", dest='parsed_blast',
 blast_file.add_argument("--raw_blast_file", dest="raw_blast",
                         type=str, nargs='?', default=None,
                         help='(B)LAST tabular alignment file.')
-parser.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=False,
-                    help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).', default=None)
+parser.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=False, default=None,
+                    help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).')
 parser.add_argument('--ncbi_tree', dest='ncbi_tree', type=str, nargs='?', required=False,
                     help='MetaPathways: NCBI tree file', default=None)
 parser.add_argument('--ncbi_megan_map', dest='ncbi_megan_map', type=str, nargs='?', required=False,
-                    help='Preferred mapping for NCBI names (map.ncbi)', default=None)
-parser.add_argument('-o', '--output', dest='output', type=str, nargs='?', required=False,
-                    help='output file of predicted taxonomies', default=None)
+                    help='Preferred mapping for NCBI names (ncbi.map)', default=None)
+parser.add_argument('-o', '--output', dest='output', type=str, nargs='?', required=False, default=None,
+                    help='output file of predicted taxonomies')
 parser.add_argument('--orf_summary', dest='orf_summary', type=str, nargs='?',
                     choices=['lca', 'besthit', 'orf_majority'], required=False, default='lca',
                     help='ORF Summary method')
@@ -145,13 +145,18 @@ def prep_logging(log_file_name, verbosity):
     return
 
 
-def translate_to_prefered_name(id, ncbi_megan_map, lcastar):
-    # This maps an NCBI Taxonomy Database ID to the prefered MEGAN Taxonomy name and
-    # reports the default name on the NCBI Taxonomy Database otherwise. 
-    # id: id to be translated
-    # ncbi_megan_map: dictionary of NCBI ID to MEGAN name
-    # lcastar: instance of the LCAStar class
-    id_str = str(id)
+def translate_to_preferred_name(taxon_id, ncbi_megan_map, lcastar):
+    """
+    This maps an NCBI Taxonomy Database ID to the prefered MEGAN Taxonomy name and
+    reports the default name on the NCBI Taxonomy Database otherwise.
+
+    :param taxon_id: ID to be translated
+    :param ncbi_megan_map: dictionary of NCBI ID to MEGAN name
+    :param lcastar: instance of the LCAStar class
+    :return:
+    """
+
+    id_str = str(taxon_id)
     if id_str in ncbi_megan_map:
         return ncbi_megan_map[id_str] + " (" + id_str + ")"
     else:
@@ -162,18 +167,9 @@ def translate_to_prefered_name(id, ncbi_megan_map, lcastar):
             return "Unknown (" + id_str + ")"
 
 
-def print_warning(message, error=False):
-    if error:
-        sys.stderr.write("Error: " + message + "\n")
-    else:
-        sys.stderr.write("Warning: " + message + "\n")
-
-
 def clean_tab_lines(line):
     # Splits lines into fields by tabs, strips whitespace and end-of-line characters from each field.
     fields = line.strip().split("\t")
-    # fields = map(str.strip, fields)
-    # fields = map(str.strip, fields, "\n")
     return fields
 
 
@@ -192,7 +188,8 @@ def create_contig2origin(mapping_filename):
                     contig2origin[read_name] = original_name
         return contig2origin
     except IOError:
-        print_warning("Could not open file " + mapping_filename + ".\n")
+        logging.error("Could not open file " + mapping_filename + " for reading.\n")
+        sys.exit(3)
         
 
 def printline(line, output_fh=None):
@@ -270,9 +267,9 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 lca_star_lineage_ids = [lca_star_lineage_ids[0]]
         
             # Translate ids to preferred names and join by ';'
-            lca_squared_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
-            majority_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in majority_lineage_ids[::-1]])
-            lca_star_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in lca_star_lineage_ids[::-1]])
+            lca_squared_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
+            majority_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in majority_lineage_ids[::-1]])
+            lca_star_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_star_lineage_ids[::-1]])
             
             # Print verbose output for contig
             line = "Contig: " + str(contig)
@@ -288,7 +285,7 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 orf_ids = []
                 for x in taxa_to_orfs[taxa]:
                     orf_ids.append(contig + "_" + x)
-                taxa_alt = translate_to_prefered_name(lcastar.translateNameToID(taxa), ncbi_megan_map, lcastar)
+                taxa_alt = translate_to_preferred_name(lcastar.translateNameToID(taxa), ncbi_megan_map, lcastar)
                 line = "".join([taxa_alt, ": ", str(len(taxa_to_orfs[taxa])), " [",",".join(orf_ids),"]"])
                 printline(line, output_fh)
         
@@ -356,17 +353,17 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
             simple_list = []
             for orf in contig_to_lca[contig]:
                 lca = contig_to_lca[contig][orf]
-                orf_lcas.append( [ lca ] )
-                simple_list.append( lca )
+                orf_lcas.append([lca])
+                simple_list.append(lca)
 
             # Calculate statistics and p-values
-            lca_squared_id = lcastar.getTaxonomy( orf_lcas, return_id=True )
-            majority = lcastar.simple_majority( simple_list) # for p-val
-            majority_id = lcastar.simple_majority( simple_list, return_id=True )
+            lca_squared_id = lcastar.getTaxonomy(orf_lcas, return_id=True)
+            majority = lcastar.simple_majority(simple_list)  # for p-val
+            majority_id = lcastar.simple_majority(simple_list, return_id=True)
             majority_p = lcastar.calculate_pvalue(simple_list, majority)
-            lca_star_id, lca_star_p = lcastar.lca_star( simple_list, return_id=True )
+            lca_star_id, lca_star_p = lcastar.lca_star(simple_list, return_id=True)
 
-            # Calcualte distances from expected if needed
+            # Calculate distances from expected if needed
             if contig_to_taxa_ref or sample_ref:
                 lca_squared = lcastar.getTaxonomy( orf_lcas )
                 lca_star, lca_star_p = lcastar.lca_star( simple_list )
@@ -394,9 +391,9 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 lca_star_lineage_ids = [lca_star_lineage_ids[0]]
             
             # Translate ids to preferred names and join by ';'
-            lca_squared_lineage =  ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
-            majority_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in majority_lineage_ids[::-1]])
-            lca_star_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in lca_star_lineage_ids[::-1]])
+            lca_squared_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
+            majority_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in majority_lineage_ids[::-1]])
+            lca_star_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_star_lineage_ids[::-1]])
         
             # Construct line based on cases
             if args['all_methods']:
@@ -425,10 +422,8 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
 def read_blast_table(args):
     # contig_taxa_data structure
     contig_to_taxa = {}
-    processed = ""
+
     if args["parsed_blast"]:
-        sys.stdout.write("Parsing (B)LAST tabular output file... ")
-        sys.stdout.flush()
         blast_table = args["parsed_blast"]
         processed = True
     else:
@@ -437,10 +432,12 @@ def read_blast_table(args):
         blast_table = args["raw_blast"]
         memoize_map = dict()
         processed = False
+
+    logging.info("Parsing (B)LAST tabular output file... ")
     try:
         blast_alignments = open(blast_table, "r")
     except IOError:
-        sys.stderr.write("ERROR: " + blast_table + " could not be opened\n")
+        logging.error(blast_table + " could not be opened for reading.\n")
         sys.exit(7)
 
     for l in blast_alignments:
@@ -468,6 +465,7 @@ def read_blast_table(args):
                     else:
                         continue
                 else:
+                    # TODO: Make retrieving the organism name more efficient
                     if fields[1] in memoize_map:
                         taxa = memoize_map[fields[1]]
                     else:
@@ -477,19 +475,19 @@ def read_blast_table(args):
                     if taxa and bitscore:
                         contig_to_taxa[contig][orf].append((taxa, float(str(bitscore))))
                     else:
-                        sys.stderr.write("WARNING: Unable to find the taxonomy and bitscore information from " +
-                                         blast_table + "\n")
+                        logging.warning("Unable to find the taxonomy and bitscore information from " +
+                                        blast_table + "\n")
             else:
                 continue
     blast_alignments.close()
-    sys.stdout.write("done.\n")
+    logging.info("done.\n")
 
     num_alignments_with_taxa = 0
     for contig in contig_to_taxa:
         for orf in contig_to_taxa[contig]:
             num_alignments_with_taxa += len(contig_to_taxa[contig][orf])
     if num_alignments_with_taxa == 0:
-        sys.stderr.write("ERROR: Unable to parse contig and taxonomic data from BLAST table provided.\n")
+        logging.error("Unable to parse contig and taxonomic data from BLAST table provided.\n")
         sys.exit(7)
 
     return contig_to_taxa
@@ -498,11 +496,14 @@ def read_blast_table(args):
 def main(argv):
     # parse arguments
     args = vars(parser.parse_args())
-    log_file = os.path.basename(args["output"]) + "./LCAStar_log.txt"
-    prep_logging(log_file, args["verbose"])
+    if args["output"]:
+        log_dir = '.' + os.sep + os.path.dirname(args["output"]) + os.sep
+    else:
+        log_dir = os.getcwd() + os.sep
+    prep_logging(log_dir + "LCAStar_log.txt", args["verbose"])
 
     if not args["parsed_blast"] and not args["raw_blast"]:
-        sys.stderr.write("ERROR: Either a MetaPathways-processed (B)LAST file or a raw BLAST file are required!\n")
+        logging.error("Either a MetaPathways-processed (B)LAST file or a raw BLAST file are required!\n")
         sys.exit(3)
 
     # read input mapping file (.mapping.txt) to create read2origin map
@@ -516,15 +517,13 @@ def main(argv):
     ncbi_megan_map = {}  # hash map from given taxonomy to preferred one used by megan
     with open(args["ncbi_megan_map"], 'r') as meganfile:
         for line in meganfile:
-             fields = line.strip().split("\t")
-             ncbi_megan_map[fields[0]] = fields[1]
+            fields = line.strip().split("\t")
+            ncbi_megan_map[fields[0]] = fields[1]
 
     # Read blast table
     contig_to_taxa = read_blast_table(args)
 
-    # Load contig references (if available or applicable)
-
-    # read contig taxa reference if available
+    # Load contig taxa reference if available
     contig_to_taxa_ref = None
     if args["contig_taxa_ref"]:
         contig_to_taxa_ref = {}
@@ -558,8 +557,7 @@ def main(argv):
             else:
                 if args['orf_summary'] == 'besthit':
                     contig_taxas.sort(key=operator.itemgetter(1), reverse=True)
-                    best_blast_taxa = contig_taxas[0][0]
-                    contig_to_lca[contig][orf] = best_blast_taxa
+                    contig_to_lca[contig][orf] = contig_taxas[0][0]  # The index of the BLAST hit with the best bitscore
                 elif args['orf_summary'] == 'orf_majority':
                     majority_list = []
                     for t in contig_taxas:
@@ -572,8 +570,7 @@ def main(argv):
                         lca_list.append([t[0]])
                     contig_to_lca[contig][orf] = lcastar.getTaxonomy(lca_list)
 
-    # calculate taxonomy statistics LCA,  for each ORF
-    # contig_to_taxa = {}
+    contig_to_taxa.clear()
 
     # LCA^2, Majority, and LCA* for each ORF
     writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_megan_map)

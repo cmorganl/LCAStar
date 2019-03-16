@@ -23,6 +23,7 @@ try:
     import random
     import functools
     import operator
+    import logging
     from os import makedirs, sys, remove
     from sys import path
     from python_resources.LCAStar import *
@@ -46,7 +47,7 @@ blast_file.add_argument("--parsed_blast_file", dest='parsed_blast',
 blast_file.add_argument("--raw_blast_file", dest="raw_blast",
                         type=str, nargs='?', default=None,
                         help='(B)LAST tabular alignment file.')
-parser.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=True,
+parser.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=False,
                     help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).', default=None)
 parser.add_argument('--ncbi_tree', dest='ncbi_tree', type=str, nargs='?', required=False,
                     help='MetaPathways: NCBI tree file', default=None)
@@ -69,6 +70,79 @@ parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", requ
                     default=None, help="Verbose mode: prints all election counts for each contig.")
 parser.add_argument("--alpha", dest="alpha", type=float, required=False,
                     default=0.51, help="Alpha-majority threshold.")
+
+# global regular expression patterns
+_CONTIG_PATTERN = re.compile(r"^(.*)_([0-9]+)$")  # pulls out contig name from ORF annotations
+_TAXONOMY_PATTERN = re.compile(r"\[(.*)\]")  # pulls out taxonomy between square brackets in taxonomic annotations
+
+
+class MyFormatter(logging.Formatter):
+
+    error_fmt = "%(levelname)s - %(module)s, line %(lineno)d:\n%(message)s"
+    warning_fmt = "%(levelname)s:\n%(message)s"
+    debug_fmt = "%(asctime)s\n%(message)s"
+    info_fmt = "%(message)s"
+
+    def __init__(self):
+        super().__init__(fmt="%(levelname)s: %(message)s",
+                         datefmt="%d/%m %H:%M:%S")
+
+    def format(self, record):
+
+        # Save the original format configured by the user
+        # when the logger formatter was instantiated
+        format_orig = self._style._fmt
+
+        # Replace the original format with one customized by logging level
+        if record.levelno == logging.DEBUG:
+            self._style._fmt = MyFormatter.debug_fmt
+
+        elif record.levelno == logging.INFO:
+            self._style._fmt = MyFormatter.info_fmt
+
+        elif record.levelno == logging.ERROR:
+            self._style._fmt = MyFormatter.error_fmt
+
+        elif record.levelno == logging.WARNING:
+            self._style._fmt = MyFormatter.warning_fmt
+
+        # Call the original formatter class to do the grunt work
+        result = logging.Formatter.format(self, record)
+
+        # Restore the original format configured by the user
+        self._style._fmt = format_orig
+
+        return result
+
+
+def prep_logging(log_file_name, verbosity):
+    output_dir = os.path.dirname(log_file_name)
+    try:
+        if not os.path.isdir(output_dir):
+            os.makedirs(output_dir)
+    except (IOError, OSError):
+        sys.stderr.write("ERROR: Unable to make directory '" + output_dir + "'.\n")
+        sys.exit(3)
+    logging.basicConfig(level=logging.DEBUG,
+                        filename=log_file_name,
+                        filemode='w',
+                        datefmt="%d/%m %H:%M:%S",
+                        format="%(asctime)s %(levelname)s:\n%(message)s")
+    if verbosity:
+        logging_level = logging.DEBUG
+    else:
+        logging_level = logging.INFO
+
+    # Set the console handler normally writing to stdout/stderr
+    ch = logging.StreamHandler()
+    ch.setLevel(logging_level)
+    ch.terminator = ''
+
+    formatter = MyFormatter()
+    ch.setFormatter(formatter)
+    logging.getLogger('').addHandler(ch)
+
+    return
 
 
 def translate_to_prefered_name(id, ncbi_megan_map, lcastar):
@@ -117,13 +191,9 @@ def create_contig2origin(mapping_filename):
                     original_name = fields[1]
                     contig2origin[read_name] = original_name
         return contig2origin
-    except:
+    except IOError:
         print_warning("Could not open file " + mapping_filename + ".\n")
-
-# global regular expression patterns
-contig_pattern = re.compile("^(.*)_([0-9]*)$")  # pulls out contig name from ORF annotations
-taxonomy_pattern = re.compile("\[(.*)\]")  # pulls out taxonomy between square brackets in taxonomic annotations
-
+        
 
 def printline(line, output_fh=None):
     # sys.stderr.write(or write line depending on presence of output_fh
@@ -136,7 +206,7 @@ def printline(line, output_fh=None):
 def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_megan_map):
     output_fh = None
     if args['output']:
-       output_fh = open(args['output'],"w")
+        output_fh = open(args['output'], "w")
     
     if args["verbose"]:
         for contig in contig_to_lca:
@@ -159,24 +229,24 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
             # Collect taxonomy for each ORF
             for orf in contig_to_lca[contig]:
                 lca = contig_to_lca[contig][orf]
-                orf_lcas.append( [ lca ] )
-                simple_list.append( lca )
+                orf_lcas.append([lca])
+                simple_list.append(lca)
                 if lca not in taxa_to_orfs:
                     taxa_to_orfs[lca] = []
                 taxa_to_orfs[lca].append(orf)
-        
+
             # Calculate statistics and p-values
-            lca_squared_id = lcastar.getTaxonomy( orf_lcas, return_id=True )
-            majority = lcastar.simple_majority( simple_list) # for p-val
-            majority_id = lcastar.simple_majority( simple_list, return_id=True )
+            lca_squared_id = lcastar.getTaxonomy(orf_lcas, return_id=True)
+            majority = lcastar.simple_majority(simple_list)  # for p-val
+            majority_id = lcastar.simple_majority(simple_list, return_id=True)
             majority_p = lcastar.calculate_pvalue(simple_list, majority)
-            lca_star_id, lca_star_p = lcastar.lca_star( simple_list, return_id=True )
-        
+            lca_star_id, lca_star_p = lcastar.lca_star(simple_list, return_id=True)
+
             # Calcualte distances from expected if needed
             if contig_to_taxa_ref or sample_ref:
-                lca_squared = lcastar.getTaxonomy( orf_lcas )
-                lca_star, lca_star_p = lcastar.lca_star( simple_list )
-            
+                lca_squared = lcastar.getTaxonomy(orf_lcas)
+                lca_star, lca_star_p = lcastar.lca_star(simple_list)
+
                 if contig_to_taxa_ref:
                     real = contig_to_taxa_ref[contig]
                 else:
@@ -187,7 +257,7 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 majority_WTD = str(lcastar.wtd_distance(majority, real))
                 lca_star_dist = str(lcastar.get_distance(lca_star, real))
                 lca_star_WTD = str(lcastar.wtd_distance(lca_star, real))
-        
+
             # Get lineages 
             lca_squared_lineage_ids = lcastar.get_lineage(lca_squared_id)
             majority_lineage_ids = lcastar.get_lineage(majority_id)
@@ -200,7 +270,7 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 lca_star_lineage_ids = [lca_star_lineage_ids[0]]
         
             # Translate ids to preferred names and join by ';'
-            lca_squared_lineage =  ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
+            lca_squared_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
             majority_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in majority_lineage_ids[::-1]])
             lca_star_lineage = ";".join([translate_to_prefered_name(x, ncbi_megan_map, lcastar) for x in lca_star_lineage_ids[::-1]])
             
@@ -253,11 +323,10 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
         if args['all_methods']:
             if contig_to_taxa_ref or sample_ref:
                 header = "\t".join(["Contig", "LCAStar", "LCAStar_p", "LCAStar_dist", "LCAStar_WTD",
-                             "Majority", "Majority_p", "Majority_dist", "Majority_WTD",
-                             "LCASquared", "LCASquared_dist", "LCASquared_WTD", "Original"])
+                                    "Majority", "Majority_p", "Majority_dist", "Majority_WTD",
+                                    "LCASquared", "LCASquared_dist", "LCASquared_WTD", "Original"])
             else:
-                header = "\t".join(["Contig", "LCAStar", "LCAStar_p",
-                             "Majority", "Majority_p", "LCASquared"])
+                header = "\t".join(["Contig", "LCAStar", "LCAStar_p", "Majority", "Majority_p", "LCASquared"])
         else:
             if contig_to_taxa_ref or sample_ref:
                 header = "\t".join(["Contig", "LCAStar", "LCAStar_p", "LCAStar_dist", "LCAStar_WTD", "Original" ])
@@ -319,7 +388,7 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
             lca_star_lineage_ids = lcastar.get_lineage(lca_star_id)
             
             # Remove all but last member if full-lineage not requested
-            if args["print_lineage"] == None:
+            if args["print_lineage"] is None:
                 lca_squared_lineage_ids = [lca_squared_lineage_ids[0]]
                 majority_lineage_ids = [majority_lineage_ids[0]]
                 lca_star_lineage_ids = [lca_star_lineage_ids[0]]
@@ -375,11 +444,11 @@ def read_blast_table(args):
         sys.exit(7)
 
     for l in blast_alignments:
-        if re.match("^\#", l):
+        if re.match(r"^#", l):
             clean_tab_lines(l)
         else:
             fields = clean_tab_lines(l)
-            contig_hits = contig_pattern.search(fields[0])
+            contig_hits = _CONTIG_PATTERN.search(fields[0])
             if contig_hits:
                 contig = contig_hits.group(1)
                 orf = contig_hits.group(2)
@@ -391,11 +460,11 @@ def read_blast_table(args):
                 # pull taxonomy out of annotation
                 # Check to ensure the BLAST table contains taxonomic information
                 if processed:
-                    taxa_hits = taxonomy_pattern.search(fields[9])
+                    taxa_hits = _TAXONOMY_PATTERN.search(fields[9])
                     if taxa_hits:
                         taxa = taxa_hits.group(1)
                         bitscore = fields[3]
-                        contig_to_taxa[contig][orf].append( (taxa, float(str(bitscore))) )
+                        contig_to_taxa[contig][orf].append((taxa, float(str(bitscore))))
                     else:
                         continue
                 else:
@@ -412,7 +481,7 @@ def read_blast_table(args):
                                          blast_table + "\n")
             else:
                 continue
-
+    blast_alignments.close()
     sys.stdout.write("done.\n")
 
     num_alignments_with_taxa = 0
@@ -422,23 +491,29 @@ def read_blast_table(args):
     if num_alignments_with_taxa == 0:
         sys.stderr.write("ERROR: Unable to parse contig and taxonomic data from BLAST table provided.\n")
         sys.exit(7)
-    else:
-        return contig_to_taxa
+
+    return contig_to_taxa
 
 
 def main(argv):
     # parse arguments
     args = vars(parser.parse_args())
+    log_file = os.path.basename(args["output"]) + "./LCAStar_log.txt"
+    prep_logging(log_file, args["verbose"])
+
     if not args["parsed_blast"] and not args["raw_blast"]:
         sys.stderr.write("ERROR: Either a MetaPathways-processed (B)LAST file or a raw BLAST file are required!\n")
         sys.exit(3)
 
-    ## read input mapping file (.mapping.txt) to create read2origin map
-    contig2origin = {} # dictionary/hash table mapping input sequences to their original header, e.g. >[Header]
-    contig2origin = create_contig2origin(args["mapping_file"])
+    # read input mapping file (.mapping.txt) to create read2origin map
+    if args["mapping_file"]:
+        contig_to_origin = create_contig2origin(args["mapping_file"])
+    else:
+        # TODO: Create a dictionary mapping ORF names to themselves
+        pass
 
-    ## create preferred mapping
-    ncbi_megan_map = {} # hash map from given taxonomy to preferred one used by megan
+    # create preferred mapping
+    ncbi_megan_map = {}  # hash map from given taxonomy to preferred one used by megan
     with open(args["ncbi_megan_map"], 'r') as meganfile:
         for line in meganfile:
              fields = line.strip().split("\t")
@@ -447,30 +522,29 @@ def main(argv):
     # Read blast table
     contig_to_taxa = read_blast_table(args)
 
-    ## Load contig references (if available or applicable)
+    # Load contig references (if available or applicable)
 
     # read contig taxa reference if available
     contig_to_taxa_ref = None
     if args["contig_taxa_ref"]:
         contig_to_taxa_ref = {}
-        if args["contig_taxa_ref"]:
-            with open(args["contig_taxa_ref"], "r") as fh:
-                for l in fh:
-                    fields = clean_tab_lines(l)
-                    contig_id = fields[0]
-                    contig_origin = fields[1]
-                    contig_to_taxa_ref[contig_id] = contig_origin
+        with open(args["contig_taxa_ref"], "r") as fh:
+            for l in fh:
+                fields = clean_tab_lines(l)
+                contig_id = fields[0]
+                contig_origin = fields[1]
+                contig_to_taxa_ref[contig_id] = contig_origin
 
     # all contigs hypothetically have the same reference origin (i.e., single cells)
     sample_ref = None
     if args["sample_taxa_ref"]:
         sample_ref = args["sample_taxa_ref"]
 
-    ## Build the LCA Star NCBI Tree
+    # Build the LCA Star NCBI Tree
     lcastar = LCAStar(args["ncbi_tree"])
     lcastar.setLCAStarParameters(min_depth=1, alpha=args["alpha"], min_reads=1)
 
-    ## Calculate LCA for each ORF
+    # Calculate LCA for each ORF
     contig_to_lca = {}
     for contig in contig_to_taxa:
         for orf in contig_to_taxa[contig]:
@@ -490,20 +564,21 @@ def main(argv):
                     majority_list = []
                     for t in contig_taxas:
                         majority_list.append(t[0])
-                    #TODO Update to check for alternative taxonomy names
+                    # TODO: Update to check for alternative taxonomy names
                     contig_to_lca[contig][orf] = lcastar.simple_majority(majority_list)
                 else:
-                    lca_list = [] # create a list of lists for LCA calculation
+                    lca_list = []  # create a list of lists for LCA calculation
                     for t in contig_taxas:
                         lca_list.append([t[0]])
                     contig_to_lca[contig][orf] = lcastar.getTaxonomy(lca_list)
 
-    ## calculate taxonomy statistics LCA,  for each ORF
+    # calculate taxonomy statistics LCA,  for each ORF
     # contig_to_taxa = {}
 
-    ## LCA^2, Majority, and LCA* for each ORF    
+    # LCA^2, Majority, and LCA* for each ORF
     writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_megan_map)
+
 
 # the main function of metapaths
 if __name__ == "__main__":
-   main(sys.argv[1:])
+    main(sys.argv[1:])

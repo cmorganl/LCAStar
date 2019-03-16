@@ -3,7 +3,8 @@
 from __future__ import division
 
 try:
-    import sys, traceback
+    import sys
+    import traceback
     import re
     import sys
     import itertools
@@ -38,6 +39,7 @@ class CDF:
             if obs <= x:
                 counter += 1
         return counter / len(self.obs)
+
 
 class LCAStar(object):
 
@@ -81,10 +83,15 @@ class LCAStar(object):
         for line in lines:
             if self.begin_pattern.search(line):
                 continue
-            fields =  [ str(x.strip())  for x in line.rstrip().split('\t')]
-            if len(fields) !=3:
+            fields = [str(x.strip()) for x in line.rstrip().split('\t')]
+            if len(fields) != 3:
                 continue
 
+            # if fields[0] in self.name_to_id:
+            #     if fields[1] != self.name_to_id[fields[0]]:
+            #         print("'" + fields[0] + "'", " overwritten as", fields[1])
+            # else:
+            #     self.name_to_id[fields[0]] = fields[1]
             self.name_to_id[fields[0]] = fields[1]
             if fields[1] not in self.id_to_name:
                 self.id_to_name[fields[1]] = fields[0]
@@ -106,23 +113,23 @@ class LCAStar(object):
 
     def setParameters(self, min_score, top_percent, min_support):
        self.lca_min_score = min_score
-       self.lca_top_percent =top_percent
+       self.lca_top_percent = top_percent
        self.lca_min_support = min_support
          
-    def sizeTaxnames(self ):
+    def sizeTaxnames(self):
          return len(self.name_to_id)
-
 
     def sizeTaxids(self):
          return len(self.taxid_to_ptaxid)
           
     def get_a_Valid_ID(self, name_group):
         for name in name_group:
-           if name in self.name_to_id:
-               return  self.name_to_id[name]
-        return -1
+            try:
+                return self.name_to_id[name]
+            except KeyError:
+                return -1
 
-    # given a taxon name it returns the correcponding unique ncbi tax id
+    # given a taxon name it returns the corresponding unique ncbi tax id
     def translateNameToID(self, name):
        if not name in self.name_to_id:
            return None
@@ -209,15 +216,18 @@ class LCAStar(object):
     # in the format [ [name1, name2], [name3, name4,....namex] ...]
     # here name1 and name2 are synonyms and so are name3 through namex
     def getTaxonomy(self, name_groups, return_id=False):
-         IDs = []
-         for name_group in name_groups:
+        IDs = []
+        for name_group in name_groups:
+            # TODO: Fix this function since IDs are overwritten ( Bacteria become stick insects)
             id = self.get_a_Valid_ID(name_group)
-            if id!=-1:
+            # print(name_group, id)
+            if id != -1:
               IDs.append(id)
-    
-         consensus = self.get_lca(IDs, return_id)
-         self.clear_cells(IDs)
-         return consensus
+
+        consensus = self.get_lca(IDs, return_id)
+        # print("Consensus:", consensus)
+        self.clear_cells(IDs)
+        return consensus
     
     # given an ID gets the lineage
     def get_lineage(self, id):
@@ -260,8 +270,8 @@ class LCAStar(object):
        species = []
        try:
            m = re.findall(r'\[([^\[]+)\]', hit['product'])
-           if m != None:
-             copyList(m,species)
+           if m is not None:
+             copyList(m, species)
        except:
              return None
    
@@ -272,71 +282,11 @@ class LCAStar(object):
  
     # used for optimization
     def set_results_dictionary(self, results_dictionary):
-        self.results_dictionary= results_dictionary
-
-    # this returns the megan taxonomy, i.e., it computes the lca but at the same time
-    # takes into consideration the parameters, min score, min support and top percent
-    def getMeganTaxonomy(self, orfid):
-         #compute the top hit wrt score
-         names = []
-         species = []
-         if 'refseq' in self.results_dictionary:
-            if orfid in self.results_dictionary['refseq']:
-                 
-               top_score = 0 
-               for hit in self.results_dictionary['refseq'][orfid]:
-                  if hit['bitscore'] >= self.lca_min_score and hit['bitscore'] >= top_score:
-                     top_score = hit['bitscore']
-
-               for hit in self.results_dictionary['refseq'][orfid]:
-                  if (100-self.lca_top_percent)*top_score/100 < hit['bitscore']:
-                     names = self.get_species(hit)
-                     #if 'MD_2_95' == orfid:
-                     #  for hit in self.results_dictionary['refseq'][orfid]:
-                     #     print  orfid  + ':' + str(names)
-                     #  else:
-                     #     print orfid  + ':' + str([])
-                     if names:
-                       species.append(names) 
-
-         taxonomy = self.getTaxonomy(species)
-         meganTaxonomy = self.get_supported_taxon( taxonomy)
-         return meganTaxonomy
-
-    # this is use to compute the min support for each taxon in the tree
-    # this is called before the  getMeganTaxonomy
-    def compute_min_support_tree(self, annotate_gff_file, pickorfs):
-        gffreader = GffFileParser(annotate_gff_file)
-        try:
-           for contig in  gffreader:
-              for orf in  gffreader.orf_dictionary[contig]:
-                 if not orf['id'] in pickorfs:
-                     continue
-                 taxonomy = None
-                 species = []
-                 if 'refseq' in self.results_dictionary:
-                   if orf['id'] in self.results_dictionary['refseq']:
-                       #compute the top hit wrt score
-                       top_score = 0 
-                       for hit in self.results_dictionary['refseq'][orf['id']]:
-                          if hit['bitscore'] >= self.lca_min_score and hit['bitscore'] >= top_score:
-                            top_score = hit['bitscore']
-       
-                       for hit in self.results_dictionary['refseq'][orf['id']]:
-                          if (100-self.lca_top_percent)*top_score/100 < hit['bitscore']:
-                             names = self.get_species(hit)
-                             if names:
-                               species.append(names) 
-                 taxonomy=self.getTaxonomy(species)
-                 self.update_taxon_support_count(taxonomy)
-                 pickorfs[orf['id']] = taxonomy
-        except:
-           sys.stderr.write("ERROR : Cannot read annotated gff file " + "\n")
-          
+        self.results_dictionary = results_dictionary
 
     def taxon_depth(self, taxon):
         id = self.translateNameToID(taxon)
-        if id==None:
+        if id is None:
            return 0
 
         tid = id 
@@ -344,8 +294,8 @@ class LCAStar(object):
         #climb up the tree from the taxon to the root 
         # the number of climbing steps is the depth
         while( tid in self.taxid_to_ptaxid and tid !='1' ):
-             tid = self.taxid_to_ptaxid[tid][0]
-             depth +=1
+            tid = self.taxid_to_ptaxid[tid][0]
+            depth += 1
 
         return depth
 
@@ -353,19 +303,19 @@ class LCAStar(object):
         # filter based on depth 
         newlist = []
         for taxon in taxalist:
-            depth  = self.taxon_depth(taxon)
+            depth = self.taxon_depth(taxon)
             if depth < self.lca_star_min_depth:
-               continue
+                continue
             newlist.append(taxon)
 
-        #filter based on min_reads /decide if we should return 'root'
+        # filter based on min_reads /decide if we should return 'root'
         # or compute the taxon using lca_star
         if len(newlist) < self.lca_star_min_reads:
             return None 
         else:
             return newlist
 
-    def setLCAStarParameters(self,  min_depth = 3, alpha = 0.51,  min_reads = 5 ):
+    def setLCAStarParameters(self,  min_depth=3, alpha=0.51,  min_reads=5):
         self.lca_star_min_reads = min_reads
         self.lca_star_min_depth = min_depth
         self.lca_star_alpha = alpha
@@ -377,41 +327,41 @@ class LCAStar(object):
            if not taxon in read_counts:
              read_counts[taxon] = 0
            read_counts[taxon] += 1
-           Total +=1
+           Total += 1
         return read_counts, Total
-         
+
     # find the taxon with the highest count but also has count higher than the 
     # majority threshold
     def lca_majority(self, taxalist):
         taxalist = self.filter_taxa_list(taxalist)
 
         majority = 'all'
-        if taxalist==None:
-           return majority
+        if taxalist is None:
+            return majority
 
         majority = self.__lca_majority(taxalist)
 
-        if majority==None:
-           return 'all'
+        if majority is None:
+            return 'all'
 
         return majority
 
     def __lca_majority(self, taxalist):
         # create the read counts
-        read_counts, Total = self.__read_counts(taxalist)
+        read_counts, total = self.__read_counts(taxalist)
          
         # find the taxon with the highest count but also has count higher than the 
         # majority threshold
         majority = None
-        maxcount =0
+        maxcount = 0
         for taxon in taxalist: 
-           if maxcount < read_counts[taxon] and Total*self.lca_star_alpha < read_counts[taxon]:
-               maxcount = read_counts[taxon]
-               majority = taxon
+            if maxcount < read_counts[taxon] and total*self.lca_star_alpha < read_counts[taxon]:
+                maxcount = read_counts[taxon]
+                majority = taxon
 
         # majority exists 
-        if majority!= None :
-          return majority
+        if majority is not None:
+            return majority
 
         return None
 
@@ -450,12 +400,12 @@ class LCAStar(object):
 
     def __create_majority(self, root, read_name_counts):
         read_counts = {}
-        Total = 0
+        total = 0
         for taxon in read_name_counts:
             count = read_name_counts[taxon]
             id = self.translateNameToID(taxon)
             read_counts[id] = count
-            Total += count
+            total += count
 
         candidate = ['1', 10000000.00]
         Stack = [root]
@@ -486,7 +436,7 @@ class LCAStar(object):
                 except:
                     sys.stderr.write("ID: " + str(id) + "\n")
                     exit(-1)
-                if self.id_to_S[id] > Total*self.lca_star_alpha:
+                if self.id_to_S[id] > total*self.lca_star_alpha:
                     if candidate[1] > self.id_to_H[id]:
                         candidate[0] = id
                         candidate[1] = self.id_to_H[id]
@@ -581,7 +531,7 @@ class LCAStar(object):
         taxalist = self.filter_taxa_list(taxalist)
         
         if taxalist is None:
-           return ('all', None)
+            return 'all', None
         
         majority = self.__lca_majority(taxalist) 
         
@@ -589,9 +539,9 @@ class LCAStar(object):
             p_val = self.calculate_pvalue(taxalist, majority)
             if return_id:
                 majority = self.translateNameToID(majority)
-            return (majority, str(p_val))
+            return majority, str(p_val)
         
-        read_counts, Total = self.__read_counts(taxalist)
+        read_counts, total = self.__read_counts(taxalist)
         
         # Calculate LCA Star
         self.__annotate_tree_counts(read_counts)
@@ -603,8 +553,8 @@ class LCAStar(object):
         p_val = self.calculate_pvalue(collapsed_taxa_list, result_taxon)
         self.__decolor_tree()
         if return_id:
-            return (result_id, str(p_val))
-        return (result_taxon, str(p_val))
+            return result_id, str(p_val)
+        return result_taxon, str(p_val)
 
     # Chi-squared with one degree of freedom
     def chi_squared(self, x):

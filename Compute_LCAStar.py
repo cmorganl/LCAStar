@@ -29,6 +29,7 @@ try:
     from python_resources.LCAStar import *
     from python_resources.fastareader import *
     from python_resources.entrez_query_utils import *
+    from python_resources.ncbiTaxonomyTree import *
 except ImportError:
     sys.stderr.write(""" Could not load some modules """ + "\n")
     sys.stderr.write(""" """ + "\n")
@@ -49,10 +50,10 @@ blast_file.add_argument("--raw_blast_file", dest="raw_blast",
                         help='(B)LAST tabular alignment file.')
 parser.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=False, default=None,
                     help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).')
-parser.add_argument('--ncbi_tree', dest='ncbi_tree', type=str, nargs='?', required=False,
-                    help='MetaPathways: NCBI tree file', default=None)
-parser.add_argument('--ncbi_megan_map', dest='ncbi_megan_map', type=str, nargs='?', required=False,
-                    help='Preferred mapping for NCBI names (ncbi.map)', default=None)
+parser.add_argument("--nodes", dest="nodes_map", type=str, nargs='?', required=True, default=None,
+                    help="A 'nodes.dmp' file downloaded from NCBI's taxonomy ftp")
+parser.add_argument("--names", dest="names_map", type=str, nargs='?', required=True, default=None,
+                    help="A 'names.dmp' file downloaded from NCBI's taxonomy ftp")
 parser.add_argument('-o', '--output', dest='output', type=str, nargs='?', required=False, default=None,
                     help='output file of predicted taxonomies')
 parser.add_argument('--orf_summary', dest='orf_summary', type=str, nargs='?',
@@ -145,26 +146,22 @@ def prep_logging(log_file_name, verbosity):
     return
 
 
-def translate_to_preferred_name(taxon_id, ncbi_megan_map, lcastar):
+def translate_to_preferred_name(taxon_id: int, lcastar):
     """
     This maps an NCBI Taxonomy Database ID to the prefered MEGAN Taxonomy name and
     reports the default name on the NCBI Taxonomy Database otherwise.
 
     :param taxon_id: ID to be translated
-    :param ncbi_megan_map: dictionary of NCBI ID to MEGAN name
     :param lcastar: instance of the LCAStar class
     :return:
     """
 
     id_str = str(taxon_id)
-    if id_str in ncbi_megan_map:
-        return ncbi_megan_map[id_str] + " (" + id_str + ")"
+    res = lcastar.translateIdToName(taxon_id)
+    if res:
+        return res + " (" + id_str + ")"
     else:
-        res = lcastar.translateIdToName(id_str)
-        if res:
-            return res + " (" + id_str + ")"
-        else:
-            return "Unknown (" + id_str + ")"
+        return "Unknown (" + id_str + ")"
 
 
 def clean_tab_lines(line):
@@ -200,7 +197,7 @@ def printline(line, output_fh=None):
         sys.stderr.write(line + "\n")
 
 
-def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_megan_map):
+def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar):
     output_fh = None
     if args['output']:
         output_fh = open(args['output'], "w")
@@ -267,9 +264,9 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 lca_star_lineage_ids = [lca_star_lineage_ids[0]]
         
             # Translate ids to preferred names and join by ';'
-            lca_squared_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
-            majority_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in majority_lineage_ids[::-1]])
-            lca_star_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_star_lineage_ids[::-1]])
+            lca_squared_lineage = ";".join([translate_to_preferred_name(x, lcastar) for x in lca_squared_lineage_ids[::-1]])
+            majority_lineage = ";".join([translate_to_preferred_name(x, lcastar) for x in majority_lineage_ids[::-1]])
+            lca_star_lineage = ";".join([translate_to_preferred_name(x, lcastar) for x in lca_star_lineage_ids[::-1]])
             
             # Print verbose output for contig
             line = "Contig: " + str(contig)
@@ -285,7 +282,7 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 orf_ids = []
                 for x in taxa_to_orfs[taxa]:
                     orf_ids.append(contig + "_" + x)
-                taxa_alt = translate_to_preferred_name(lcastar.translateNameToID(taxa), ncbi_megan_map, lcastar)
+                taxa_alt = translate_to_preferred_name(lcastar.translateNameToID(taxa), lcastar)
                 line = "".join([taxa_alt, ": ", str(len(taxa_to_orfs[taxa])), " [",",".join(orf_ids),"]"])
                 printline(line, output_fh)
         
@@ -391,9 +388,9 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_
                 lca_star_lineage_ids = [lca_star_lineage_ids[0]]
             
             # Translate ids to preferred names and join by ';'
-            lca_squared_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_squared_lineage_ids[::-1]])
-            majority_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in majority_lineage_ids[::-1]])
-            lca_star_lineage = ";".join([translate_to_preferred_name(x, ncbi_megan_map, lcastar) for x in lca_star_lineage_ids[::-1]])
+            lca_squared_lineage = ";".join([translate_to_preferred_name(x, lcastar) for x in lca_squared_lineage_ids[::-1]])
+            majority_lineage = ";".join([translate_to_preferred_name(x, lcastar) for x in majority_lineage_ids[::-1]])
+            lca_star_lineage = ";".join([translate_to_preferred_name(x, lcastar) for x in lca_star_lineage_ids[::-1]])
         
             # Construct line based on cases
             if args['all_methods']:
@@ -513,12 +510,12 @@ def main(argv):
         # TODO: Create a dictionary mapping ORF names to themselves
         pass
 
-    # create preferred mapping
-    ncbi_megan_map = {}  # hash map from given taxonomy to preferred one used by megan
-    with open(args["ncbi_megan_map"], 'r') as meganfile:
-        for line in meganfile:
-            fields = line.strip().split("\t")
-            ncbi_megan_map[fields[0]] = fields[1]
+    # # create preferred mapping
+    # ncbi_megan_map = {}  # hash map from given taxonomy to preferred one used by megan
+    # with open(args["ncbi_megan_map"], 'r') as meganfile:
+    #     for line in meganfile:
+    #         fields = line.strip().split("\t")
+    #         ncbi_megan_map[fields[0]] = fields[1]
 
     # Read blast table
     contig_to_taxa = read_blast_table(args)
@@ -540,7 +537,8 @@ def main(argv):
         sample_ref = args["sample_taxa_ref"]
 
     # Build the LCA Star NCBI Tree
-    lcastar = LCAStar(args["ncbi_tree"])
+    lcastar = LCAStar()
+    lcastar.ncbi_tree = NcbiTaxonomyTree(args["nodes_map"], args["names_map"])
     lcastar.setLCAStarParameters(min_depth=1, alpha=args["alpha"], min_reads=1)
 
     # Calculate LCA for each ORF
@@ -573,7 +571,7 @@ def main(argv):
     contig_to_taxa.clear()
 
     # LCA^2, Majority, and LCA* for each ORF
-    writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar, ncbi_megan_map)
+    writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar)
 
 
 # the main function of metapaths

@@ -39,7 +39,7 @@ class NcbiTaxonomyTree(object):
         """
         self.standard_ranks = stdranks = ['species', 'genus', 'family', 'order', 'class', 'phylum', 'superkingdom']
         if nodes_filename and names_filename:
-            logging.info("NcbiTaxonomyTree building ...")
+            logging.info("Building the NcbiTaxonomyTree... ")
             Node = namedtuple('Node', ['name', 'rank', 'parent', 'children'])
             taxid2name = {}
             logging.debug("names.dmp parsing... ")
@@ -52,6 +52,10 @@ class NcbiTaxonomyTree(object):
                         taxid = int(line[0])
                         taxid2name[taxid] = organism
                         self.name_to_taxid[organism] = taxid
+                    # Names from older versions may be put under 'includes' and 'synonym' titles and missed
+                    # elif line[3] == "\tincludes\t":
+                    #     self.name_to_taxid[organism] = taxid
+
             logging.debug("done.\n")
 
             logging.debug("nodes.dmp parsing... ")
@@ -98,7 +102,7 @@ class NcbiTaxonomyTree(object):
             root_children = self.dic[1].children
             root_children.remove(1)
             self.dic[1] = self.dic[1]._replace(parent=None, children=root_children)
-            logging.info("NcbiTaxonomyTree built\n")
+            logging.info("done.\n")
 
     def getParent(self, taxids):
         """

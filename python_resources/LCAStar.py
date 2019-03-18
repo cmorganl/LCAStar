@@ -94,12 +94,14 @@ class LCAStar(object):
     # given a taxon name it returns the corresponding unique ncbi tax taxid
     def translateNameToID(self, name):
         if name not in self.ncbi_tree.name_to_taxid:
+            logging.debug("Organism name '" + str(name) + "' not found in NCBI taxonomic tree.\n")
             return None
         return self.ncbi_tree.name_to_taxid[name]
 
     # given a taxon taxid to taxon name map
     def translateIdToName(self, taxid: int):
         if taxid not in self.ncbi_tree.dic:
+            logging.debug("Taxonomic ID '" + str(taxid) + "' not found in NCBI taxonomic tree.\n")
             return None
         return self.ncbi_tree.dic[taxid].name
 

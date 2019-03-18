@@ -443,7 +443,7 @@ def read_blast_table(blast_table, process_level="parsed"):
         logging.debug("Downloading taxonomic information for each accession aligned to... ")
         processed = False
 
-    logging.info("Parsing (B)LAST tabular output file... ")
+    logging.info("Parsing (B)LAST tabular output file '" + blast_table + "'... ")
     try:
         blast_alignments = open(blast_table, "r")
     except IOError:
@@ -471,12 +471,12 @@ def read_blast_table(blast_table, process_level="parsed"):
                     try:
                         taxa_hits = _TAXONOMY_PATTERN.search(fields[9])
                         taxa = taxa_hits.group(1)
-                        bitscore = fields[3]
-                        contig_to_taxa[contig][orf].append((taxa, float(str(bitscore))))
-                    except (TypeError, KeyError):
+                    except (AttributeError, KeyError):
                         logging.error("Taxonomy not found on line " + str(line_no) + " in " + blast_table +
-                                      "Is this file processed? Consider changing '--process_level' to raw.\n")
+                                      ". Is this file processed? Consider changing '--process_level' to raw.\n")
                         sys.exit(5)
+                    bitscore = fields[3]
+                    contig_to_taxa[contig][orf].append((taxa, float(str(bitscore))))
                 else:
                     # TODO: Make retrieving the organism name more efficient
                     if fields[1] in memoize_map:
@@ -521,7 +521,9 @@ def main(argv):
             args["blast_dir"] += os.sep
         log_dir = args["blast_dir"]
     elif args["blast_file"]:
-        log_dir = '.' + os.sep + os.path.dirname(args["blast_file"]) + os.sep
+        if not os.path.isabs(os.path.dirname(args["blast_file"])):
+            args["blast_file"] = os.path.abspath(args["blast_file"])
+        log_dir = os.path.dirname(args["blast_file"]) + os.sep
 
     # Instantiate the log
     log_file = log_dir + "LCAStar_log.txt"

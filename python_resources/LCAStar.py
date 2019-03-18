@@ -6,7 +6,6 @@ try:
     import sys
     import traceback
     import re
-    import sys
     import itertools
     import operator
     import logging
@@ -22,7 +21,7 @@ except ImportError:
 try:
     from math import erf  # only available in Python 2.7
 except ImportError:
-    sys.stderr.write("Warning: Could not import math.erf, will use interpolation for p-values." + "\n")
+    logging.warning("Could not import math.erf, will use interpolation for p-values." + "\n")
 
 
 def copyList(a, b): 
@@ -50,13 +49,13 @@ class LCAStar(object):
         # initialize class variables
         self.begin_pattern = re.compile("#")
 
-        # a map from id to value, which has the S = sum n,  value for each id
+        # a map from taxid to value, which has the S = sum n,  value for each taxid
         self.id_to_R = {}
-        # a map from id to value, which has the S = sum n,  value for each id
+        # a map from taxid to value, which has the S = sum n,  value for each taxid
         self.id_to_S = {}
-        # a map from id to value, which has the L = sum n log n,  value for each id
+        # a map from taxid to value, which has the L = sum n log n,  value for each taxid
         self.id_to_L = {}
-        # a map from id to value, which has the entropy H value for each id
+        # a map from taxid to value, which has the entropy H value for each taxid
         self.id_to_H = {}
         # a map to keep track of visited nodes
         self.id_to_V = {}
@@ -92,27 +91,27 @@ class LCAStar(object):
             except KeyError:
                 return -1
 
-    # given a taxon name it returns the corresponding unique ncbi tax id
+    # given a taxon name it returns the corresponding unique ncbi tax taxid
     def translateNameToID(self, name):
         if name not in self.ncbi_tree.name_to_taxid:
             return None
         return self.ncbi_tree.name_to_taxid[name]
 
-    # given a taxon id to taxon name map
-    def translateIdToName(self, id: int):
-        if id not in self.ncbi_tree.dic:
+    # given a taxon taxid to taxon name map
+    def translateIdToName(self, taxid: int):
+        if taxid not in self.ncbi_tree.dic:
             return None
-        return self.ncbi_tree.dic[id].name
+        return self.ncbi_tree.dic[taxid].name
 
     # given a name it returns the parents name
     def getParentName(self, name):
         if name not in self.ncbi_tree.name_to_taxid:
             return None
-        id = self.ncbi_tree.name_to_taxid[name]
-        pid = self.getParentTaxId(id)
+        taxid = self.ncbi_tree.name_to_taxid[name]
+        pid = self.getParentTaxId(taxid)
         return self.translateIdToName(pid)
 
-    # given a ncbi tax id returns the parents tax id
+    # given a ncbi tax taxid returns the parents tax taxid
     def getParentTaxId(self, ID):
         if ID not in self.ncbi_tree.taxid_to_ptaxid:
             return None
@@ -122,11 +121,11 @@ class LCAStar(object):
         """
         Given a set of ids it returns the lowest common ancestor, without caring about min support.
         Here LCA for a set of ids are computed as follows: 
-        first we consider one ID at a time for each id we traverse up the NCBI tree using the id to parent id map
+        first we consider one ID at a time for each taxid we traverse up the NCBI tree using the taxid to parent taxid map
         at the same time increasing the count on the second value of the 3-tuple 
         note that at the node where all the of the individual ids (limit in number)
         converges the counter matches the limit for the first time, while climbing up. 
-        This also this enables us to make the selection of id arbitrary 
+        This also this enables us to make the selection of taxid arbitrary 
 
         :param taxon_ids:
         :param return_id: 
@@ -175,8 +174,8 @@ class LCAStar(object):
         :return:
         """
         limit = len(taxon_ids)
-        for id in taxon_ids:
-            tid = id
+        for taxid in taxon_ids:
+            tid = taxid
             while tid in self.ncbi_tree.taxid_to_ptaxid and tid != 1:
                 self.ncbi_tree.taxid_to_ptaxid[tid][1] = 0
                 tid = self.ncbi_tree.taxid_to_ptaxid[tid][0]
@@ -201,10 +200,10 @@ class LCAStar(object):
         return consensus
 
     # given an ID gets the lineage
-    def get_lineage(self, id):
-        tid = id
+    def get_lineage(self, taxid):
+        tid = taxid
         lineage = []
-        lineage.append(id)
+        lineage.append(taxid)
         while tid in self.ncbi_tree.taxid_to_ptaxid and tid !=1:
             lineage.append(self.ncbi_tree.taxid_to_ptaxid[tid][0])
             tid = self.ncbi_tree.taxid_to_ptaxid[tid][0]
@@ -217,10 +216,10 @@ class LCAStar(object):
         lin1 = self.get_lineage(id1)
         lin2 = self.get_lineage(id2)
         if debug:
-            sys.stderr.write("id1:", str(id1) + "\n")
-            sys.stderr.write("id2:", str(id2) + "\n")
-            sys.stderr.write("lin1:", str(lin1) + "\n")
-            sys.stderr.write("lin2:", str(lin2) + "\n")
+            logging.debug("id1:", str(id1) + "\n")
+            logging.debug("id2:", str(id2) + "\n")
+            logging.debug("lin1:", str(lin1) + "\n")
+            logging.debug("lin2:", str(lin2) + "\n")
         large = None
         if len(lin1) <= len(lin2):
            large = lin2
@@ -256,11 +255,11 @@ class LCAStar(object):
         self.results_dictionary = results_dictionary
 
     def taxon_depth(self, taxon):
-        id = self.translateNameToID(taxon)
-        if id is None:
+        taxid = self.translateNameToID(taxon)
+        if taxid is None:
            return 0
 
-        tid = id 
+        tid = taxid 
         depth = 0
         #climb up the tree from the taxon to the root 
         # the number of climbing steps is the depth
@@ -358,15 +357,15 @@ class LCAStar(object):
     def __decolor_tree(self):
         S = [1]
         while len(S) > 0:
-            id = S.pop()
+            taxid = S.pop()
 
             C = []
-            if id in self.ncbi_tree.ptaxid_to_taxid:
-              C = self.ncbi_tree.ptaxid_to_taxid[id].keys()
+            if taxid in self.ncbi_tree.ptaxid_to_taxid:
+              C = self.ncbi_tree.ptaxid_to_taxid[taxid].keys()
            
             for child in C:
-               if self.ncbi_tree.ptaxid_to_taxid[id][child]:
-                  self.ncbi_tree.ptaxid_to_taxid[id][child] = False
+               if self.ncbi_tree.ptaxid_to_taxid[taxid][child]:
+                  self.ncbi_tree.ptaxid_to_taxid[taxid][child] = False
                   S.append(child)
 
     def __create_majority(self, root, read_name_counts):
@@ -374,52 +373,51 @@ class LCAStar(object):
         total = 0
         for taxon in read_name_counts:
             count = read_name_counts[taxon]
-            id = self.translateNameToID(taxon)
-            read_counts[id] = count
+            taxid = self.translateNameToID(taxon)
+            read_counts[taxid] = count
             total += count
 
         candidate = [1, 10000000.00]
         Stack = [root]
         while len(Stack) > 0:
-            id = Stack.pop()
+            taxid = Stack.pop()
             # calculate here
-            if id in self.id_to_V:
+            if taxid in self.id_to_V:
                 C = []
-                if id in self.ncbi_tree.ptaxid_to_taxid:
-                    C = self.ncbi_tree.ptaxid_to_taxid[id].keys()
+                if taxid in self.ncbi_tree.ptaxid_to_taxid:
+                    C = self.ncbi_tree.ptaxid_to_taxid[taxid].keys()
                 # I am coming up
-                self.id_to_H[id] = 0
+                self.id_to_H[taxid] = 0
 
-                if id in read_counts:
-                    self.id_to_S[id] = float(read_counts[id])
-                    self.id_to_L[id] = float(read_counts[id])*log(float(read_counts[id]))
+                if taxid in read_counts:
+                    self.id_to_S[taxid] = float(read_counts[taxid])
+                    self.id_to_L[taxid] = float(read_counts[taxid])*log(float(read_counts[taxid]))
                 else:
-                    self.id_to_S[id] = 0
-                    self.id_to_L[id] = 0
+                    self.id_to_S[taxid] = 0
+                    self.id_to_L[taxid] = 0
 
                 for child in C:
-                    if self.ncbi_tree.ptaxid_to_taxid[id][child]:
-                        self.id_to_S[id] += self.id_to_S[child]
-                        self.id_to_L[id] += self.id_to_L[child]
-                        #print id, self.id_to_S[id], self.ncbi_tree.taxid_to_ptaxid[id]
+                    if self.ncbi_tree.ptaxid_to_taxid[taxid][child]:
+                        self.id_to_S[taxid] += self.id_to_S[child]
+                        self.id_to_L[taxid] += self.id_to_L[child]
                 try:
-                    self.id_to_H[id] = -(self.id_to_L[id]/self.id_to_S[id] - log(self.id_to_S[id]))
+                    self.id_to_H[taxid] = -(self.id_to_L[taxid]/self.id_to_S[taxid] - log(self.id_to_S[taxid]))
                 except:
-                    sys.stderr.write("ID: " + str(id) + "\n")
+                    logging.debug("ID: " + str(taxid) + "\n")
                     exit(-1)
-                if self.id_to_S[id] > total*self.lca_star_alpha:
-                    if candidate[1] > self.id_to_H[id]:
-                        candidate[0] = id
-                        candidate[1] = self.id_to_H[id]
+                if self.id_to_S[taxid] > total*self.lca_star_alpha:
+                    if candidate[1] > self.id_to_H[taxid]:
+                        candidate[0] = taxid
+                        candidate[1] = self.id_to_H[taxid]
             else:  # going down
-                self.id_to_V[id] = True
+                self.id_to_V[taxid] = True
                 C = []
-                if id in self.ncbi_tree.ptaxid_to_taxid:
-                    C = self.ncbi_tree.ptaxid_to_taxid[id].keys()
+                if taxid in self.ncbi_tree.ptaxid_to_taxid:
+                    C = self.ncbi_tree.ptaxid_to_taxid[taxid].keys()
 
-                Stack.append(id)
+                Stack.append(taxid)
                 for child in C:
-                    if self.ncbi_tree.ptaxid_to_taxid[id][child]:
+                    if self.ncbi_tree.ptaxid_to_taxid[taxid][child]:
                         Stack.append(child)
         
         return candidate[0]
@@ -446,12 +444,12 @@ class LCAStar(object):
         exp_lin = self.get_lineage(exp_id)
         obs_lin = self.get_lineage(obs_id)
         if debug:
-            sys.stderr.write("Expected: ", exp + "\n")
-            sys.stderr.write("Observed: ", obs + "\n")
-            sys.stderr.write("Expected ID: ", str(exp_id) + "\n")
-            sys.stderr.write("Observed ID: ", str(obs_id) + "\n")
-            sys.stderr.write("Expected Lineage:", str(exp_lin) + "\n")
-            sys.stderr.write("Observed Lineage :", str(obs_lin) + "\n")
+            logging.debug("Expected: ", exp + "\n")
+            logging.debug("Observed: ", obs + "\n")
+            logging.debug("Expected ID: ", str(exp_id) + "\n")
+            logging.debug("Observed ID: ", str(obs_id) + "\n")
+            logging.debug("Expected Lineage:", str(exp_lin) + "\n")
+            logging.debug("Observed Lineage :", str(obs_lin) + "\n")
         sign = -1
 
         # check to see if expected in observed lineage

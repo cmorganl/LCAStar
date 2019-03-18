@@ -38,39 +38,54 @@ except ImportError:
 what_i_do = """Computes three estimates of Contig Taxonomy: LCA^2, Majority, and entropy-based LCA* \
 as described in the LCAStar paper (Hanson, et al. 2014).
 """
-parser = argparse.ArgumentParser(description=what_i_do)
+parser = argparse.ArgumentParser(description=what_i_do, add_help=False)
+io = parser.add_argument_group("Input/output arguments")
+ncbi_tax = parser.add_argument_group("NCBI taxonomy arguments")
+lca_alg = parser.add_argument_group("LCA* algorithm parameters")
+misc = parser.add_argument_group("Miscellaneous arguments")
 
-blast_file = parser.add_mutually_exclusive_group()
+input_data = io.add_mutually_exclusive_group()
 
-blast_file.add_argument("--parsed_blast_file", dest='parsed_blast',
+input_data.add_argument("--file", dest='blast_file',
                         type=str, nargs='?', default=None,
-                        help='MetaPathways Output: Parsed (B)LAST annotation file.')
-blast_file.add_argument("--raw_blast_file", dest="raw_blast",
+                        help="Path to a (B)LAST tabular alignment file.")
+input_data.add_argument("--dir", dest="blast_dir",
                         type=str, nargs='?', default=None,
-                        help='(B)LAST tabular alignment file.')
-parser.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=False, default=None,
-                    help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).')
-parser.add_argument("--nodes", dest="nodes_map", type=str, nargs='?', required=True, default=None,
-                    help="A 'nodes.dmp' file downloaded from NCBI's taxonomy ftp")
-parser.add_argument("--names", dest="names_map", type=str, nargs='?', required=True, default=None,
-                    help="A 'names.dmp' file downloaded from NCBI's taxonomy ftp")
-parser.add_argument('-o', '--output', dest='output', type=str, nargs='?', required=False, default=None,
-                    help='output file of predicted taxonomies')
-parser.add_argument('--orf_summary', dest='orf_summary', type=str, nargs='?',
-                    choices=['lca', 'besthit', 'orf_majority'], required=False, default='lca',
-                    help='ORF Summary method')
-parser.add_argument('--contig_taxa_ref', dest='contig_taxa_ref', type=str, nargs='?', required=False,
-                    default=None, help='List of contig reference taxonomies (i.e., the known taxonomy)')
-parser.add_argument('--sample_taxa_ref', dest='sample_taxa_ref', type=str, nargs='?', required=False,
-                    default=None, help='Name of the NCBI reference taxonomy. Hint: Put in double quotes')
-parser.add_argument('-a', '--all_methods', dest='all_methods', action='store_true', required=False,
-                    default=None, help='Print all taxonomic estimation methods.')
-parser.add_argument('-l', '--print_lineage', dest='print_lineage', action='store_true', required=False,
-                    default=None, help='Print full taxonomic linage instead of just final leaf taxonomy.')
-parser.add_argument("-v", "--verbose", dest="verbose", action="store_true", required=False,
-                    default=None, help="Verbose mode: prints all election counts for each contig.")
-parser.add_argument("--alpha", dest="alpha", type=float, required=False,
-                    default=0.51, help="Alpha-majority threshold.")
+                        help="Path to a directory containing (B)LAST tabular alignment files.")
+io.add_argument("-x", "--ext",
+                type=str, nargs='?', required=False, default=".txt",
+                help="The file extension for the (B)LAST tabular alignment file(s).")
+io.add_argument('-o', '--output', dest='output', type=str, nargs='?', required=False, default=None,
+                help='Output directory for predicted taxonomy files. DEFAULT = Input directory.')
+io.add_argument("-p", "--process_level",
+                dest="process_level", type=str, choices=["raw", "parsed"], required=False, default="parsed",
+                help="'parsed' indicates input is MetaPathways-parsed (B)LAST annotation file, 'raw' is unprocessed.")
+
+ncbi_tax.add_argument("--nodes", dest="nodes_map", type=str, nargs='?', required=True, default=None,
+                      help="A 'nodes.dmp' file downloaded from NCBI's taxonomy ftp")
+ncbi_tax.add_argument("--names", dest="names_map", type=str, nargs='?', required=True, default=None,
+                      help="A 'names.dmp' file downloaded from NCBI's taxonomy ftp")
+
+lca_alg.add_argument('--orf_summary', dest='orf_summary', type=str, nargs='?',
+                     choices=['lca', 'besthit', 'orf_majority'], required=False, default='lca',
+                     help='ORF Summary method')
+lca_alg.add_argument("--alpha", dest="alpha", type=float, required=False, default=0.51,
+                     help="Alpha-majority threshold.")
+lca_alg.add_argument('-a', '--all_methods', dest='all_methods', action='store_true', required=False, default=None,
+                     help='Print all taxonomic estimation methods.')
+lca_alg.add_argument('-l', '--print_lineage', dest='print_lineage', action='store_true', required=False, default=None,
+                     help='Print full taxonomic linage instead of just final leaf taxonomy.')
+
+misc.add_argument('-m', '--mapping_file', dest='mapping_file', type=str, nargs='?', required=False, default=None,
+                  help='MetaPathways Output: Input mapping file in preprocessed directory (.mapping.txt).')
+misc.add_argument('--contig_taxa_ref', dest='contig_taxa_ref', type=str, nargs='?', required=False, default=None,
+                  help='List of contig reference taxonomies (i.e., the known taxonomy)')
+misc.add_argument('--sample_taxa_ref', dest='sample_taxa_ref', type=str, nargs='?', required=False, default=None,
+                  help='Name of the NCBI reference taxonomy. Hint: Put in double quotes')
+misc.add_argument("-v", "--verbose", dest="verbose", action="store_true", required=False, default=None,
+                  help="Verbose mode: prints all election counts for each contig.")
+misc.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
+                  help='Show this help message and exit.')
 
 # global regular expression patterns
 _CONTIG_PATTERN = re.compile(r"^(.*)_([0-9]+)$")  # pulls out contig name from ORF annotations
@@ -197,10 +212,10 @@ def printline(line, output_fh=None):
         sys.stderr.write(line + "\n")
 
 
-def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar):
+def writeout(args, output_file, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar):
     output_fh = None
-    if args['output']:
-        output_fh = open(args['output'], "w")
+    if output_file:
+        output_fh = open(output_file, "w")
     
     if args["verbose"]:
         for contig in contig_to_lca:
@@ -414,20 +429,18 @@ def writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar):
                 sys.stderr.write(line + "\n")
     if output_fh:
         output_fh.close()
+    return
 
 
-def read_blast_table(args):
+def read_blast_table(blast_table, process_level="parsed"):
     # contig_taxa_data structure
     contig_to_taxa = {}
+    memoize_map = {}
 
-    if args["parsed_blast"]:
-        blast_table = args["parsed_blast"]
+    if process_level == "parsed":
         processed = True
     else:
-        sys.stdout.write("Downloading taxonomic information for each accession aligned to... ")
-        sys.stdout.flush()
-        blast_table = args["raw_blast"]
-        memoize_map = dict()
+        logging.debug("Downloading taxonomic information for each accession aligned to... ")
         processed = False
 
     logging.info("Parsing (B)LAST tabular output file... ")
@@ -436,8 +449,9 @@ def read_blast_table(args):
     except IOError:
         logging.error(blast_table + " could not be opened for reading.\n")
         sys.exit(7)
-
+    line_no = 0
     for l in blast_alignments:
+        line_no += 1
         if re.match(r"^#", l):
             clean_tab_lines(l)
         else:
@@ -454,13 +468,15 @@ def read_blast_table(args):
                 # pull taxonomy out of annotation
                 # Check to ensure the BLAST table contains taxonomic information
                 if processed:
-                    taxa_hits = _TAXONOMY_PATTERN.search(fields[9])
-                    if taxa_hits:
+                    try:
+                        taxa_hits = _TAXONOMY_PATTERN.search(fields[9])
                         taxa = taxa_hits.group(1)
                         bitscore = fields[3]
                         contig_to_taxa[contig][orf].append((taxa, float(str(bitscore))))
-                    else:
-                        continue
+                    except (TypeError, KeyError):
+                        logging.error("Taxonomy not found on line " + str(line_no) + " in " + blast_table +
+                                      "Is this file processed? Consider changing '--process_level' to raw.\n")
+                        sys.exit(5)
                 else:
                     # TODO: Make retrieving the organism name more efficient
                     if fields[1] in memoize_map:
@@ -493,13 +509,25 @@ def read_blast_table(args):
 def main(argv):
     # parse arguments
     args = vars(parser.parse_args())
-    if args["output"]:
-        log_dir = '.' + os.sep + os.path.dirname(args["output"]) + os.sep
-    else:
-        log_dir = os.getcwd() + os.sep
-    prep_logging(log_dir + "LCAStar_log.txt", args["verbose"])
 
-    if not args["parsed_blast"] and not args["raw_blast"]:
+    # Cap the output input/output directories
+    log_dir = os.getcwd() + os.sep
+    if args["output"]:
+        if args["output"][-1] != os.sep:
+            args["output"] += os.sep
+        log_dir = args["output"]
+    elif args["blast_dir"]:
+        if args["blast_dir"][-1] != os.sep:
+            args["blast_dir"] += os.sep
+        log_dir = args["blast_dir"]
+    elif args["blast_file"]:
+        log_dir = '.' + os.sep + os.path.dirname(args["blast_file"]) + os.sep
+
+    # Instantiate the log
+    log_file = log_dir + "LCAStar_log.txt"
+    prep_logging(log_file, args["verbose"])
+
+    if not args["blast_dir"] and not args["blast_file"]:
         logging.error("Either a MetaPathways-processed (B)LAST file or a raw BLAST file are required!\n")
         sys.exit(3)
 
@@ -517,61 +545,79 @@ def main(argv):
     #         fields = line.strip().split("\t")
     #         ncbi_megan_map[fields[0]] = fields[1]
 
-    # Read blast table
-    contig_to_taxa = read_blast_table(args)
-
-    # Load contig taxa reference if available
-    contig_to_taxa_ref = None
-    if args["contig_taxa_ref"]:
-        contig_to_taxa_ref = {}
-        with open(args["contig_taxa_ref"], "r") as fh:
-            for l in fh:
-                fields = clean_tab_lines(l)
-                contig_id = fields[0]
-                contig_origin = fields[1]
-                contig_to_taxa_ref[contig_id] = contig_origin
-
-    # all contigs hypothetically have the same reference origin (i.e., single cells)
-    sample_ref = None
-    if args["sample_taxa_ref"]:
-        sample_ref = args["sample_taxa_ref"]
-
     # Build the LCA Star NCBI Tree
     lcastar = LCAStar()
     lcastar.ncbi_tree = NcbiTaxonomyTree(args["nodes_map"], args["names_map"])
     lcastar.setLCAStarParameters(min_depth=1, alpha=args["alpha"], min_reads=1)
 
-    # Calculate LCA for each ORF
-    contig_to_lca = {}
-    for contig in contig_to_taxa:
-        for orf in contig_to_taxa[contig]:
-            if contig not in contig_to_lca:
-                contig_to_lca[contig] = {}
-            if orf not in contig_to_lca[contig]:
-                contig_to_lca[contig][orf] = None
-            contig_taxas = contig_to_taxa[contig][orf]
-            if len(contig_taxas) == 0:
-                contig_to_lca[contig][orf] = "root"
-            else:
-                if args['orf_summary'] == 'besthit':
-                    contig_taxas.sort(key=operator.itemgetter(1), reverse=True)
-                    contig_to_lca[contig][orf] = contig_taxas[0][0]  # The index of the BLAST hit with the best bitscore
-                elif args['orf_summary'] == 'orf_majority':
-                    majority_list = []
-                    for t in contig_taxas:
-                        majority_list.append(t[0])
-                    # TODO: Update to check for alternative taxonomy names
-                    contig_to_lca[contig][orf] = lcastar.simple_majority(majority_list)
+    # Collect all BLAST tables
+    if args["blast_dir"]:
+        aln_files = glob.glob(args["blast_dir"] + "*" + args["ext"])
+        if len(aln_files) == 0:
+            logging.error("No alignment files found in " + args["blast_dir"] +
+                          " with the extension '" + args["ext"] + "'\n")
+            sys.exit(3)
+    else:
+        aln_files = [args["blast_file"]]
+
+    for blast_file in aln_files:
+        # Read the BLAST table
+        contig_to_taxa = read_blast_table(blast_file, args["process_level"])
+        prefix = '.'.join(os.path.basename(blast_file).split('.')[:-1])   # file - extension + '.LCAStar.txt'
+        if args["output"]:
+            output_file = args["output"] + prefix + ".LCAStar.txt"
+        elif args["blast_dir"]:
+            output_file = args["blast_dir"] + prefix + ".LCAStar.txt"
+        else:
+            output_file = os.path.dirname(args["blast_file"]) + os.sep + prefix + ".LCAStar.txt"
+
+        # Load contig taxa reference if available
+        contig_to_taxa_ref = None
+        if args["contig_taxa_ref"]:
+            contig_to_taxa_ref = {}
+            with open(args["contig_taxa_ref"], "r") as fh:
+                for l in fh:
+                    fields = clean_tab_lines(l)
+                    contig_id = fields[0]
+                    contig_origin = fields[1]
+                    contig_to_taxa_ref[contig_id] = contig_origin
+
+        # all contigs hypothetically have the same reference origin (i.e., single cells)
+        sample_ref = None
+        if args["sample_taxa_ref"]:
+            sample_ref = args["sample_taxa_ref"]
+
+        # Calculate LCA for each ORF
+        contig_to_lca = {}
+        for contig in contig_to_taxa:
+            for orf in contig_to_taxa[contig]:
+                if contig not in contig_to_lca:
+                    contig_to_lca[contig] = {}
+                if orf not in contig_to_lca[contig]:
+                    contig_to_lca[contig][orf] = None
+                contig_taxas = contig_to_taxa[contig][orf]
+                if len(contig_taxas) == 0:
+                    contig_to_lca[contig][orf] = "root"
                 else:
-                    lca_list = []  # create a list of lists for LCA calculation
-                    for t in contig_taxas:
-                        lca_list.append([t[0]])
-                    contig_to_lca[contig][orf] = lcastar.getTaxonomy(lca_list)
+                    if args['orf_summary'] == 'besthit':
+                        contig_taxas.sort(key=operator.itemgetter(1), reverse=True)
+                        contig_to_lca[contig][orf] = contig_taxas[0][0]  # Index of the BLAST hit with the best bitscore
+                    elif args['orf_summary'] == 'orf_majority':
+                        majority_list = []
+                        for t in contig_taxas:
+                            majority_list.append(t[0])
+                        # TODO: Update to check for alternative taxonomy names
+                        contig_to_lca[contig][orf] = lcastar.simple_majority(majority_list)
+                    else:
+                        lca_list = []  # create a list of lists for LCA calculation
+                        for t in contig_taxas:
+                            lca_list.append([t[0]])
+                        contig_to_lca[contig][orf] = lcastar.getTaxonomy(lca_list)
 
-    contig_to_taxa.clear()
+        contig_to_taxa.clear()
 
-    # LCA^2, Majority, and LCA* for each ORF
-    writeout(args, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar)
+        # LCA^2, Majority, and LCA* for each ORF
+        writeout(args, output_file, contig_to_lca, contig_to_taxa_ref, sample_ref, lcastar)
 
 
 # the main function of metapaths
